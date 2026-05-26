@@ -1,0 +1,142 @@
+/* ============================================================
+   EduLab Games — Tema Visual
+   Paleta baseada nas cores da bandeira de Itajaí:
+     Amarelo  #FFD700
+     Roxo     #5B21B6
+   Apoio: branco, cinza claro, tons vibrantes por disciplina
+   ============================================================ */
+
+:root {
+  --color-primary:     #5B21B6;   /* roxo */
+  --color-primary-dark:#3B0F8C;
+  --color-primary-light:#7C3AED;
+  --color-secondary:   #FFD700;   /* amarelo */
+  --color-secondary-dark:#D4AC00;
+  --color-accent:      #F97316;   /* laranja - destaque */
+  --color-success:     #22C55E;
+  --color-danger:      #EF4444;
+  --color-bg:          #F5F3FF;   /* lilás muito claro */
+  --color-surface:     #FFFFFF;
+  --color-text:        #1E1B4B;
+  --color-text-muted:  #6B7280;
+  --color-border:      #DDD6FE;
+  --radius-card:       1rem;
+  --radius-btn:        0.75rem;
+  --shadow-card:       0 4px 20px rgba(91,33,182,0.12);
+  --shadow-card-hover: 0 8px 30px rgba(91,33,182,0.22);
+  --font-family:       'Nunito', 'Segoe UI', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-family);
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ---- Typography ---- */
+h1, h2, h3, h4 { font-weight: 800; line-height: 1.2; }
+h1 { font-size: 2.25rem; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.35rem; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.4rem;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-family);
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+}
+.btn:hover  { transform: translateY(-2px); filter: brightness(1.07); }
+.btn:active { transform: translateY(0);    filter: brightness(0.95); }
+
+.btn-primary   { background: var(--color-primary);   color: #fff; box-shadow: 0 3px 10px rgba(91,33,182,.35); }
+.btn-secondary { background: var(--color-secondary); color: var(--color-text); box-shadow: 0 3px 10px rgba(212,172,0,.35); }
+.btn-outline   { background: transparent; color: var(--color-primary); border: 2px solid var(--color-primary); }
+.btn-lg        { padding: 1rem 2rem; font-size: 1.15rem; }
+.btn-sm        { padding: 0.45rem 1rem; font-size: 0.9rem; }
+
+/* ---- Cards ---- */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+  cursor: pointer;
+}
+
+/* ---- Badge ---- */
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.badge-purple { background: #EDE9FE; color: var(--color-primary); }
+.badge-yellow { background: #FEF9C3; color: #92400E; }
+.badge-green  { background: #DCFCE7; color: #166534; }
+.badge-orange { background: #FFEDD5; color: #9A3412; }
+
+/* ---- Page wrapper ---- */
+.page { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+.page-title {
+  text-align: center;
+  color: var(--color-primary);
+  margin-bottom: 0.5rem;
+}
+.page-subtitle {
+  text-align: center;
+  color: var(--color-text-muted);
+  margin-bottom: 2rem;
+  font-size: 1.05rem;
+}
+
+/* ---- Grid ---- */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; }
+
+/* ---- Input ---- */
+.input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-btn);
+  font-family: var(--font-family);
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+.input:focus { outline: none; border-color: var(--color-primary); }
+
+/* ---- Divider ---- */
+.divider { border: none; border-top: 2px dashed var(--color-border); margin: 1.5rem 0; }
+
+/* ---- Stars / score decorations ---- */
+.stars { letter-spacing: 0.1em; font-size: 1.4rem; }
+
+/* ---- Responsive ---- */
+@media (max-width: 640px) {
+  h1 { font-size: 1.75rem; }
+  h2 { font-size: 1.35rem; }
+  .page { padding: 1.25rem 0.75rem; }
+}

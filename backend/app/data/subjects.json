@@ -1,0 +1,13 @@
+[
+  { "id": "matematica",         "label": "Matemática",                  "icon": "🔢", "color": "#FF6B6B" },
+  { "id": "portugues",          "label": "Língua Portuguesa",           "icon": "📖", "color": "#4ECDC4" },
+  { "id": "ingles",             "label": "Língua Estrangeira - Inglês", "icon": "🌎", "color": "#45B7D1" },
+  { "id": "historia",           "label": "História",                    "icon": "📜", "color": "#96CEB4" },
+  { "id": "geografia",          "label": "Geografia",                   "icon": "🗺️", "color": "#FFEAA7" },
+  { "id": "ciencias",           "label": "Ciências",                    "icon": "🔬", "color": "#DDA0DD" },
+  { "id": "artes",              "label": "Artes",                       "icon": "🎨", "color": "#F0E68C" },
+  { "id": "ensino_religioso",   "label": "Ensino Religioso",            "icon": "✨", "color": "#98FB98" },
+  { "id": "educacao_fisica",    "label": "Educação Física",             "icon": "⚽", "color": "#FFB347" },
+  { "id": "projeto_integrador", "label": "Projeto Integrador",         "icon": "🚀", "color": "#87CEEB" },
+  { "id": "musicalizacao",      "label": "Musicalização",               "icon": "🎵", "color": "#FFD700" }
+]

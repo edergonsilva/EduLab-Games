@@ -1,0 +1,52 @@
+.join-room-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 3rem;
+}
+
+.join-card {
+  width: 100%;
+  max-width: 440px;
+  text-align: center;
+  padding: 2.5rem 2rem;
+}
+
+.join-icon   { font-size: 3.5rem; margin-bottom: 0.5rem; }
+.join-title  { color: var(--color-primary); margin-bottom: 0.5rem; }
+.join-subtitle {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 1.75rem;
+}
+
+.join-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.form-label { font-weight: 700; font-size: 0.9rem; color: var(--color-text); }
+
+.code-input {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0.5rem;
+  text-align: center;
+}
+
+.join-error {
+  background: #FEF2F2;
+  border: 1.5px solid #FCA5A5;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1rem;
+  color: #B91C1C;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.join-btn  { width: 100%; margin-top: 0.5rem; }
+.back-btn  { margin-top: 1rem; }

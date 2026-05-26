@@ -1,0 +1,57 @@
+.teacher-page { padding-bottom: 3rem; }
+
+.teacher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.teacher-card { display: flex; flex-direction: column; gap: 1rem; }
+.card-heading { font-size: 1.1rem; color: var(--color-primary); margin-bottom: 0.25rem; }
+
+.form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.form-label { font-weight: 700; font-size: 0.9rem; }
+
+.teacher-error {
+  background: #FEF2F2;
+  border: 1.5px solid #FCA5A5;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1rem;
+  color: #B91C1C;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.room-code-display {
+  background: linear-gradient(135deg, #F5F3FF, #EDE9FE);
+  border: 2px solid var(--color-primary-light);
+  border-radius: var(--radius-card);
+  padding: 1.25rem;
+  text-align: center;
+}
+.room-code-label { font-size: 0.85rem; color: var(--color-text-muted); font-weight: 600; margin-bottom: 0.35rem; }
+.room-code-value {
+  font-size: 3rem;
+  font-weight: 900;
+  letter-spacing: 0.4em;
+  color: var(--color-primary);
+}
+.room-code-hint { font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.35rem; }
+
+.placeholder-area {
+  background: #FAFAFA;
+  border: 2px dashed var(--color-border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+}
+.placeholder-icon { font-size: 2rem; }
+.placeholder-area code { background: #EDE9FE; color: var(--color-primary); padding: 0 0.3em; border-radius: 3px; }
