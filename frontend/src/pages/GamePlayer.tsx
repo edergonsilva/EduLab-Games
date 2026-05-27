@@ -32,9 +32,13 @@ export default function GamePlayer() {
     retry: false,
   })
 
-  // Listen for postMessage events from the game iframe
+  // Listen for postMessage events from the game iframe.
+  // Games served from /static/ share the platform origin; sandboxed iframes
+  // without allow-same-origin report an opaque ("null") origin — both are accepted.
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
+      const allowedOrigins = [window.location.origin, 'null']
+      if (!allowedOrigins.includes(event.origin)) return
       if (!event.data || typeof event.data !== 'object') return
       const msg = event.data as { type?: string; [key: string]: unknown }
       if (!msg.type) return
@@ -81,7 +85,7 @@ export default function GamePlayer() {
           subject: game.subject,
           grades: game.school_grades,
         },
-        '*',
+        window.location.origin,
       )
     }
   }
@@ -203,7 +207,7 @@ export default function GamePlayer() {
           onLoad={handleIframeLoad}
           onError={handleIframeError}
           allow="fullscreen"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          sandbox="allow-scripts allow-forms allow-popups"
         />
       )}
 

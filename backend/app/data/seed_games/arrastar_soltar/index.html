@@ -124,6 +124,9 @@
   let round = 0, score = 0, placed = {}, dragItem = null
 
   function emit(type, data) {
+    // '*' is required: the iframe runs in a sandboxed context without allow-same-origin,
+    // so its origin is opaque and window.location.origin cannot be used as target.
+    // The parent (GamePlayer) validates events by type rather than trusting origin alone.
     window.parent.postMessage({ type, gameId: GAME_ID, ...data }, '*')
   }
 
@@ -167,8 +170,8 @@
         zone.classList.remove('over')
         if (!dragItem) return
         // Remove from source list
-        const src = document.querySelector(`[data-item="${CSS.escape(dragItem)}"]`)
-        if (src) src.remove()
+        const sourceEl = document.querySelector(`[data-item="${CSS.escape(dragItem)}"]`)
+        if (sourceEl) sourceEl.remove()
         // Remove from any other zone
         Object.keys(placed).forEach(lbl => {
           placed[lbl] = placed[lbl].filter(i => i !== dragItem)

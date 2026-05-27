@@ -76,6 +76,9 @@
     let current = 0, score = 0, answered = false
 
     function emit(type, data) {
+      // '*' is required: the iframe runs in a sandboxed context without allow-same-origin,
+      // so its origin is opaque and window.location.origin cannot be used as target.
+      // The parent (GamePlayer) validates events by type rather than trusting origin alone.
       window.parent.postMessage({ type, gameId: GAME_ID, ...data }, '*')
     }
 
