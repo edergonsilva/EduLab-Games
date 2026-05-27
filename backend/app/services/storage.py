@@ -1,5 +1,5 @@
 import json
-import random
+import secrets
 import sqlite3
 import string
 import time
@@ -67,7 +67,7 @@ def initialize_storage() -> None:
 
 
 def _safe_slug(value: str) -> str:
-    return "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in value)
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in value)
 
 
 def _extract_zip_safely(archive: zipfile.ZipFile, destination: Path) -> None:
@@ -225,7 +225,7 @@ def update_imported_game_status(game_id: str, version: str, status: str) -> Game
 
 
 def _generate_room_code(length: int = 6) -> str:
-    return "".join(random.choices(string.digits, k=length))
+    return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
 def create_room(game_id: str) -> Room:

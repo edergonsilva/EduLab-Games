@@ -27,7 +27,7 @@ export default function Teacher() {
     queryFn: getRooms,
   })
 
-  const selectedGameId = roomGames.some(game => game.id === gameId)
+  const effectiveGameId = roomGames.some(game => game.id === gameId)
     ? gameId
     : (roomGames[0]?.id ?? '')
 
@@ -44,11 +44,11 @@ export default function Teacher() {
   })
 
   const handleCreate = () => {
-    if (!selectedGameId) {
+    if (!effectiveGameId) {
       setError('Nenhum jogo publicado com sala por código está disponível no momento.')
       return
     }
-    createRoomMutation.mutate(selectedGameId)
+    createRoomMutation.mutate(effectiveGameId)
   }
 
   return (
@@ -66,7 +66,7 @@ export default function Teacher() {
             <select
               id="game-select"
               className="input"
-              value={selectedGameId}
+              value={effectiveGameId}
               onChange={e => setGameId(e.target.value)}
               disabled={gamesLoading || roomGames.length === 0}
             >

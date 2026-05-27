@@ -1,6 +1,6 @@
 from typing import List, Optional, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GameManifest(BaseModel):
@@ -26,6 +26,11 @@ class GameManifest(BaseModel):
     api_version: str = "1.0"
     source: Literal["seed", "imported"] = "seed"
 
+    @field_validator("thumbnail", mode="before")
+    @classmethod
+    def normalize_thumbnail(cls, value: Optional[str]):
+        return value or None
+
     @model_validator(mode="after")
     def normalize_catalog_flags(self):
         has_room_mode = "sala_codigo" in self.mode
@@ -35,8 +40,5 @@ class GameManifest(BaseModel):
             self.session_required = False
         elif not has_direct_mode:
             self.session_required = True
-
-        if self.thumbnail == "":
-            self.thumbnail = None
 
         return self

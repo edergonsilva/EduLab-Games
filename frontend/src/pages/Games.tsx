@@ -71,19 +71,19 @@ export default function Games() {
       {games && games.length > 0 && (
         <div className="games-grid">
           {games.map(game => {
-            const cardKey = `${game.source}-${game.id}-${game.version}`
+            const gameCardKey = `${game.source}-${game.id}-${game.version}`
             const supportsRoomMode = game.mode.includes('sala_codigo')
             const supportsDirectPlay = game.mode.some(mode => mode !== 'sala_codigo')
-            const showImage = game.thumbnail && !brokenThumbs[cardKey]
+            const showImage = game.thumbnail && !brokenThumbs[gameCardKey]
 
             return (
-              <div key={cardKey} className="game-card card card-hover">
+              <div key={gameCardKey} className="game-card card card-hover">
                 <div className="game-thumb">
                   {showImage ? (
                     <img
                       src={game.thumbnail ?? undefined}
                       alt={game.name}
-                      onError={() => setBrokenThumbs(current => ({ ...current, [cardKey]: true }))}
+                      onError={() => setBrokenThumbs(current => ({ ...current, [gameCardKey]: true }))}
                     />
                   ) : (
                     <span className="game-thumb-placeholder">🎮</span>
