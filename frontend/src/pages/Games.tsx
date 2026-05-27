@@ -110,7 +110,10 @@ export default function Games() {
                     <small className="game-credits">Por {game.developer}</small>
                     <div className="game-actions">
                       {supportsDirectPlay && (
-                        <button className="btn btn-secondary btn-sm">
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => navigate(`/jogar/${game.id}`)}
+                        >
                           Jogar Agora ▶
                         </button>
                       )}

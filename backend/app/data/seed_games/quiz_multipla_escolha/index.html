@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quiz de Múltipla Escolha — EduLab Games</title>
+  <style>
+    :root {
+      --purple: #5B21B6; --yellow: #FFD700; --bg: #F5F3FF;
+      --correct: #22C55E; --wrong: #EF4444;
+      --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font); background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1.5rem;
+    }
+    .quiz-box {
+      background: #fff; border-radius: 1.25rem;
+      box-shadow: 0 6px 30px rgba(91,33,182,.15);
+      padding: 2rem; max-width: 600px; width: 100%;
+    }
+    .quiz-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .quiz-title { font-size: 1.4rem; font-weight: 800; color: var(--purple); }
+    .quiz-score { background: var(--yellow); color: #3B0F8C; padding: 0.35rem 0.9rem; border-radius: 999px; font-weight: 800; font-size: 0.95rem; }
+    .progress-bar { height: 8px; background: #EDE9FE; border-radius: 4px; margin-bottom: 1.5rem; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--purple); border-radius: 4px; transition: width 0.4s; }
+    .question-text { font-size: 1.15rem; font-weight: 700; color: #1E1B4B; margin-bottom: 1.25rem; line-height: 1.5; }
+    .options { display: flex; flex-direction: column; gap: 0.75rem; }
+    .option-btn {
+      background: #F5F3FF; border: 2px solid #DDD6FE; border-radius: 0.75rem;
+      padding: 0.85rem 1.1rem; font-size: 1rem; font-weight: 600;
+      font-family: var(--font); cursor: pointer; text-align: left;
+      transition: all 0.2s; color: #1E1B4B;
+    }
+    .option-btn:hover:not(:disabled) { border-color: var(--purple); background: #EDE9FE; transform: translateX(4px); }
+    .option-btn.correct { background: #DCFCE7; border-color: var(--correct); color: #166534; }
+    .option-btn.wrong   { background: #FEF2F2; border-color: var(--wrong);   color: #991B1B; }
+    .option-btn:disabled { cursor: default; }
+    .feedback { margin-top: 1.25rem; padding: 0.85rem 1rem; border-radius: 0.75rem; font-weight: 700; font-size: 1rem; text-align: center; }
+    .feedback.correct { background: #DCFCE7; color: #166534; }
+    .feedback.wrong   { background: #FEF2F2; color: #991B1B; }
+    .next-btn {
+      margin-top: 1.25rem; width: 100%; padding: 0.9rem;
+      background: var(--purple); color: #fff; border: none; border-radius: 0.75rem;
+      font-size: 1.05rem; font-weight: 800; font-family: var(--font); cursor: pointer; transition: filter 0.2s;
+    }
+    .next-btn:hover { filter: brightness(1.1); }
+    .result-box { text-align: center; }
+    .result-emoji { font-size: 4rem; margin-bottom: 0.75rem; }
+    .result-title { font-size: 1.75rem; font-weight: 900; color: var(--purple); margin-bottom: 0.5rem; }
+    .result-score { font-size: 1.2rem; color: #6B7280; margin-bottom: 1.5rem; }
+    .restart-btn {
+      background: var(--yellow); color: #3B0F8C; border: none; border-radius: 0.75rem;
+      padding: 0.9rem 2rem; font-size: 1.05rem; font-weight: 800; font-family: var(--font); cursor: pointer;
+    }
+    .credits { margin-top: 1.5rem; text-align: center; font-size: 0.78rem; color: #9CA3AF; }
+  </style>
+</head>
+<body>
+  <div class="quiz-box" id="app"></div>
+  <script>
+    const GAME_ID = 'quiz_multipla_escolha'
+    const QUESTIONS = [
+      { question: "Quanto é 7 × 8?", options: ["54","56","63","48"], correct: 1 },
+      { question: "Qual é a capital do Brasil?", options: ["São Paulo","Rio de Janeiro","Brasília","Belo Horizonte"], correct: 2 },
+      { question: "Qual planeta é o mais próximo do Sol?", options: ["Vênus","Terra","Marte","Mercúrio"], correct: 3 },
+      { question: "Quantos lados tem um hexágono?", options: ["5","6","7","8"], correct: 1 },
+      { question: "Como se escreve corretamente?", options: ["Excessão","Exeção","Exceção","Escessão"], correct: 2 },
+      { question: "Qual é o resultado de 15 ÷ 3?", options: ["3","4","5","6"], correct: 2 },
+      { question: "Em que continente fica o Brasil?", options: ["África","Europa","América do Sul","Ásia"], correct: 2 },
+    ]
+
+    let current = 0, score = 0, answered = false
+
+    function emit(type, data) {
+      window.parent.postMessage({ type, gameId: GAME_ID, ...data }, '*')
+    }
+
+    function render() {
+      const app = document.getElementById('app')
+      if (current >= QUESTIONS.length) { renderResult(app); return }
+      const q = QUESTIONS[current]
+      const pct = Math.round((current / QUESTIONS.length) * 100)
+      app.innerHTML = `
+        <div class="quiz-header">
+          <span class="quiz-title">🎮 Quiz Múltipla Escolha</span>
+          <span class="quiz-score">⭐ ${score} pts</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <p class="question-text">${current + 1}. ${q.question}</p>
+        <div class="options">
+          ${q.options.map((opt, i) => `<button class="option-btn" data-i="${i}" onclick="answer(${i})">${String.fromCharCode(65+i)}) ${opt}</button>`).join('')}
+        </div>
+        <div class="credits">EduLab Games — Pergunta ${current + 1} de ${QUESTIONS.length}</div>`
+    }
+
+    function answer(idx) {
+      if (answered) return
+      answered = true
+      const q = QUESTIONS[current]
+      const correct = idx === q.correct
+      if (correct) score += 100
+      document.querySelectorAll('.option-btn').forEach((btn, i) => {
+        btn.disabled = true
+        if (i === q.correct) btn.classList.add('correct')
+        else if (i === idx)  btn.classList.add('wrong')
+      })
+      const fb = document.createElement('div')
+      fb.className = `feedback ${correct ? 'correct' : 'wrong'}`
+      fb.textContent = correct ? '✅ Correto! +100 pontos' : `❌ Errado! A resposta certa era: ${q.options[q.correct]}`
+      document.querySelector('.options').after(fb)
+      const next = document.createElement('button')
+      next.className = 'next-btn'
+      next.textContent = current + 1 < QUESTIONS.length ? '▶ Próxima Pergunta' : '🏁 Ver Resultado'
+      next.onclick = () => { current++; answered = false; render() }
+      fb.after(next)
+      emit('question_answered', { correct, score, question: current + 1, total: QUESTIONS.length })
+      emit('score_updated', { score })
+    }
+
+    function renderResult(app) {
+      const total = QUESTIONS.length * 100
+      const pct = Math.round((score / total) * 100)
+      const emoji = pct >= 80 ? '🏆' : pct >= 50 ? '😊' : '💪'
+      const msg = pct >= 80 ? 'Excelente!' : pct >= 50 ? 'Bom trabalho!' : 'Continue praticando!'
+      app.innerHTML = `
+        <div class="result-box">
+          <div class="result-emoji">${emoji}</div>
+          <h2 class="result-title">${msg}</h2>
+          <p class="result-score">Você acertou ${score / 100} de ${QUESTIONS.length} perguntas<br><strong>${score} / ${total} pontos (${pct}%)</strong></p>
+          <button class="restart-btn" onclick="restart()">🔄 Jogar Novamente</button>
+        </div>
+        <div class="credits" style="margin-top:1.5rem">Desenvolvido pela equipe EduLab Games</div>`
+      emit('game_finished', { score, correct: score / 100, total: QUESTIONS.length, percentage: pct })
+    }
+
+    function restart() {
+      current = 0; score = 0; answered = false
+      emit('game_started', {})
+      render()
+    }
+
+    emit('game_started', {})
+    render()
+  </script>
+</body>
+</html>

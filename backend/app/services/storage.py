@@ -17,6 +17,8 @@ STATIC_DIR = settings.storage_dir / "static"
 IMPORTED_STATIC_DIR = STATIC_DIR / "imported"
 PACKAGES_DIR = settings.storage_dir / "packages"
 SEED_GAMES_PATH = settings.data_dir / "games.json"
+SEED_GAMES_SOURCE_DIR = settings.data_dir / "seed_games"
+SEED_GAMES_STATIC_DIR = STATIC_DIR / "games"
 
 
 @contextmanager
@@ -31,10 +33,23 @@ def get_connection():
         connection.close()
 
 
+def _sync_seed_games_to_static() -> None:
+    """Copy/sync seed game HTML files from data dir to the served static dir."""
+    if not SEED_GAMES_SOURCE_DIR.exists():
+        return
+    SEED_GAMES_STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    for game_dir in SEED_GAMES_SOURCE_DIR.iterdir():
+        if game_dir.is_dir():
+            target = SEED_GAMES_STATIC_DIR / game_dir.name
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(game_dir, target, dirs_exist_ok=True)
+
+
 def initialize_storage() -> None:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     IMPORTED_STATIC_DIR.mkdir(parents=True, exist_ok=True)
     PACKAGES_DIR.mkdir(parents=True, exist_ok=True)
+    _sync_seed_games_to_static()
 
     with get_connection() as connection:
         connection.execute(
@@ -94,13 +109,21 @@ def _extract_zip_safely(archive: zipfile.ZipFile, destination: Path) -> None:
 def load_seed_games() -> list[GameManifest]:
     with SEED_GAMES_PATH.open(encoding="utf-8") as file:
         payload = json.load(file)
-    return [GameManifest(**game, source="seed") for game in payload]
+    games = []
+    for game_data in payload:
+        game = GameManifest(**game_data, source="seed")
+        if game.entry_point:
+            game = game.model_copy(update={
+                "play_url": f"/static/games/{game.id}/{game.entry_point}"
+            })
+        games.append(game)
+    return games
 
 
 def list_imported_games() -> list[GameManifest]:
     with get_connection() as connection:
         rows = connection.execute(
-            "SELECT manifest_json, status, thumbnail_url FROM imported_games ORDER BY updated_at DESC"
+            "SELECT manifest_json, status, thumbnail_url, extracted_dir FROM imported_games ORDER BY updated_at DESC"
         ).fetchall()
 
     games: list[GameManifest] = []
@@ -109,6 +132,16 @@ def list_imported_games() -> list[GameManifest]:
         manifest_payload["status"] = row["status"]
         manifest_payload["thumbnail"] = row["thumbnail_url"]
         manifest_payload["source"] = "imported"
+
+        # Compute play_url from extracted_dir relative to STATIC_DIR
+        entry_point = manifest_payload.get("entry_point")
+        if entry_point and row["extracted_dir"]:
+            try:
+                rel = Path(row["extracted_dir"]).relative_to(STATIC_DIR)
+                manifest_payload["play_url"] = f"/static/{rel.as_posix()}/{entry_point}"
+            except ValueError:
+                pass
+
         games.append(GameManifest(**manifest_payload))
     return games
 
@@ -155,12 +188,17 @@ def save_imported_game(manifest: GameManifest, package_bytes: bytes, archive: zi
     if not thumbnail_path and "preview/cover.png" in archive.namelist():
         thumbnail_path = "preview/cover.png"
 
+    play_url = None
+    if manifest.entry_point:
+        play_url = f"/static/imported/{game_slug}/{version_slug}/{manifest.entry_point}"
+
     manifest = manifest.model_copy(update={
         "status": "test",
         "thumbnail": (
             f"/static/imported/{game_slug}/{version_slug}/{thumbnail_path}" if thumbnail_path else None
         ),
         "source": "imported",
+        "play_url": play_url,
     })
 
     package_path.write_bytes(package_bytes)

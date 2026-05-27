@@ -24,6 +24,8 @@ export interface Game {
   name: string
   description?: string
   thumbnail?: string | null
+  entry_point?: string | null
+  play_url?: string | null
   mode: string[]
   min_players: number
   max_players: number
