@@ -1,5 +1,6 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class GameManifest(BaseModel):
@@ -10,7 +11,7 @@ class GameManifest(BaseModel):
     credits: str
     school_grades: List[int]
     subject: Optional[str] = None
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
     mode: List[str]
     min_players: int = 1
     max_players: int = 1
@@ -23,3 +24,19 @@ class GameManifest(BaseModel):
     description: Optional[str] = None
     status: str = "test"
     api_version: str = "1.0"
+    source: Literal["seed", "imported"] = "seed"
+
+    @model_validator(mode="after")
+    def normalize_catalog_flags(self):
+        has_room_mode = "sala_codigo" in self.mode
+        has_direct_mode = any(mode != "sala_codigo" for mode in self.mode)
+
+        if not has_room_mode:
+            self.session_required = False
+        elif not has_direct_mode:
+            self.session_required = True
+
+        if self.thumbnail == "":
+            self.thumbnail = None
+
+        return self

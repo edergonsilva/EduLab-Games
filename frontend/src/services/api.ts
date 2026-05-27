@@ -23,7 +23,7 @@ export interface Game {
   id: string
   name: string
   description?: string
-  thumbnail?: string
+  thumbnail?: string | null
   mode: string[]
   min_players: number
   max_players: number
@@ -39,6 +39,7 @@ export interface Game {
   api_version: string
   supports_teacher_panel?: boolean
   supports_ranking?: boolean
+  source: 'seed' | 'imported'
 }
 
 export interface Room {
@@ -53,6 +54,13 @@ export interface HealthResponse {
   status: string
   app: string
   version: string
+}
+
+export interface ImportEdugameResponse {
+  ok: boolean
+  created: boolean
+  message: string
+  manifest: Game
 }
 
 // ---- API calls ----
@@ -72,14 +80,29 @@ export const getGames = (params?: {
   status?: string
 }) => api.get<Game[]>('/games', { params }).then(r => r.data)
 
-export const getGame = (id: string) =>
-  api.get<Game>(`/games/${id}`).then(r => r.data)
+export const getGame = (id: string, version?: string) =>
+  api.get<Game>(`/games/${id}`, { params: version ? { version } : undefined }).then(r => r.data)
+
+export const getAdminGames = (status?: string) =>
+  api.get<Game[]>('/admin/games', { params: status ? { status } : undefined }).then(r => r.data)
+
+export const setAdminGameStatus = (gameId: string, version: string, status: 'test' | 'published' | 'archived') =>
+  api.patch<Game>(`/admin/games/${gameId}/${version}`, { status }).then(r => r.data)
+
+export const uploadEdugame = (file: File) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post<ImportEdugameResponse>('/import/edugame', formData).then(r => r.data)
+}
 
 export const createRoom = (game_id: string) =>
   api.post<Room>('/rooms', { game_id }).then(r => r.data)
 
 export const getRoom = (code: string) =>
   api.get<Room>(`/rooms/${code}`).then(r => r.data)
+
+export const getRooms = () =>
+  api.get<Room[]>('/rooms').then(r => r.data)
 
 export const joinRoom = (code: string, player_name: string) =>
   api.post<Room>(`/rooms/${code}/join`, { code, player_name }).then(r => r.data)

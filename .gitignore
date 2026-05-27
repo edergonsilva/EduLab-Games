@@ -34,3 +34,5 @@ frontend/.vite/
 
 # Temporary edugame packages (for testing)
 *.edugame
+# Local runtime data
+backend/data_storage/
