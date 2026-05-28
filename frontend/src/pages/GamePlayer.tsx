@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getGame, type Game } from '../services/api'
 import './GamePlayer.css'
@@ -9,10 +9,24 @@ type GameEvent =
   | { type: 'question_answered'; correct: boolean; score: number; question?: number }
   | { type: 'score_updated'; score: number }
   | { type: 'game_finished'; score: number; [key: string]: unknown }
+  | { type: 'ready'; [key: string]: unknown }
+  | { type: 'request_state'; [key: string]: unknown }
+  | { type: 'pause'; reason?: string; [key: string]: unknown }
+
+type PlatformContext = {
+  mode: string
+  room_code?: string
+  room_id?: string
+  room_name?: string
+  grade?: number
+  subject?: string
+  origin: string
+}
 
 export default function GamePlayer() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [iframeError, setIframeError] = useState(false)
@@ -20,6 +34,21 @@ export default function GamePlayer() {
   const [score, setScore] = useState<number | null>(null)
   const [gameStarted, setGameStarted] = useState(false)
   const [gameFinished, setGameFinished] = useState(false)
+  const [gameReady, setGameReady] = useState(false)
+
+  const context = useMemo<PlatformContext>(() => {
+    const gradeParam = searchParams.get('grade')
+    const gradeValue = gradeParam ? Number(gradeParam) : undefined
+    return {
+      mode: searchParams.get('mode') ?? 'solo',
+      room_code: searchParams.get('room_code') ?? undefined,
+      room_id: searchParams.get('room_id') ?? undefined,
+      room_name: searchParams.get('room_name') ?? undefined,
+      grade: Number.isNaN(gradeValue) ? undefined : gradeValue,
+      subject: searchParams.get('subject') ?? undefined,
+      origin: searchParams.get('origin') ?? 'catalog',
+    }
+  }, [searchParams])
 
   const {
     data: game,
@@ -43,9 +72,36 @@ export default function GamePlayer() {
       const msg = event.data as { type?: string; [key: string]: unknown }
       if (!msg.type) return
 
-      const gameEvent = msg as unknown as GameEvent
+      let normalizedType = msg.type
+      if (msg.type === 'edulab_event' && typeof msg.event === 'string') {
+        normalizedType = msg.event
+      }
 
-      switch (msg.type) {
+      const normalizedMessage = { ...msg, type: normalizedType }
+
+      const gameEvent = normalizedMessage as unknown as GameEvent
+
+      switch (normalizedType) {
+        case 'ready':
+          setGameReady(true)
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              { type: 'platform_state', score, started: gameStarted, finished: gameFinished },
+              window.location.origin,
+            )
+          }
+          break
+        case 'request_state':
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage(
+              { type: 'platform_state', score, started: gameStarted, finished: gameFinished },
+              window.location.origin,
+            )
+          }
+          break
+        case 'pause':
+          console.info('[EduLab Runner] pause requested by game', normalizedMessage)
+          break
         case 'game_started':
           setGameStarted(true)
           setGameFinished(false)
@@ -65,28 +121,34 @@ export default function GamePlayer() {
       }
 
       setEvents(prev => [...prev.slice(-49), gameEvent])
-      console.info('[EduLab Runner] game event:', msg.type, msg)
+      console.info('[EduLab Runner] game event:', normalizedType, normalizedMessage)
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [gameFinished, gameStarted, score])
 
   // Send initial context to the game once iframe loads
   function handleIframeLoad() {
     setIframeLoaded(true)
     setIframeError(false)
+    setGameReady(false)
     if (iframeRef.current?.contentWindow && game) {
       iframeRef.current.contentWindow.postMessage(
         {
-          type: 'init',
-          gameId: game.id,
-          gameName: game.name,
-          subject: game.subject,
-          grades: game.school_grades,
+          type: 'platform_context',
+          schema_version: '1.1',
+          game: {
+            id: game.id,
+            name: game.name,
+            subject: game.subject,
+            grades: game.school_grades,
+          },
+          context,
         },
         window.location.origin,
       )
+      console.info('[EduLab Runner] context sent to game', { gameId: game.id, context })
     }
   }
 
@@ -94,6 +156,8 @@ export default function GamePlayer() {
     setIframeLoaded(false)
     setIframeError(true)
   }
+
+  const roomChip = context.room_code ? `Sala ${context.room_code}` : null
 
   if (isLoading) {
     return (
@@ -157,6 +221,13 @@ export default function GamePlayer() {
           </span>
         </div>
         <div className="player-hud">
+          {roomChip && (
+            <span className="player-room-badge">{roomChip}</span>
+          )}
+          <span className="player-origin-badge">origem: {context.origin}</span>
+          {gameReady && (
+            <span className="player-status-badge player-status-ready">✅ Pronto</span>
+          )}
           {score !== null && (
             <span className="player-score-badge">⭐ {score} pts</span>
           )}

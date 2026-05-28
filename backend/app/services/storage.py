@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import zipfile
+from uuid import uuid4
 
 from app.config import settings
 from app.models.game import GameManifest
@@ -71,13 +72,56 @@ def initialize_storage() -> None:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS rooms (
+                id TEXT NOT NULL,
                 code TEXT PRIMARY KEY,
-                game_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                grade INTEGER,
+                subject TEXT,
+                selected_game_id TEXT,
                 status TEXT NOT NULL,
                 players_json TEXT NOT NULL,
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                started_at REAL,
+                finished_at REAL
             )
             """
+        )
+        _ensure_rooms_schema(connection)
+
+
+def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(rooms)").fetchall()
+    }
+    required_columns: list[tuple[str, str]] = [
+        ("id", "TEXT"),
+        ("name", "TEXT"),
+        ("grade", "INTEGER"),
+        ("subject", "TEXT"),
+        ("selected_game_id", "TEXT"),
+        ("updated_at", "REAL"),
+        ("started_at", "REAL"),
+        ("finished_at", "REAL"),
+    ]
+    for column_name, column_type in required_columns:
+        if column_name not in columns:
+            connection.execute(f"ALTER TABLE rooms ADD COLUMN {column_name} {column_type}")
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(rooms)").fetchall()
+    }
+    now = time.time()
+    if "id" in columns:
+        connection.execute("UPDATE rooms SET id = COALESCE(id, code) WHERE id IS NULL OR id = ''")
+    if "name" in columns:
+        connection.execute("UPDATE rooms SET name = COALESCE(name, 'Sala ' || code) WHERE name IS NULL OR name = ''")
+    if "updated_at" in columns:
+        connection.execute(
+            "UPDATE rooms SET updated_at = COALESCE(updated_at, created_at, ?) WHERE updated_at IS NULL OR updated_at = 0",
+            (now,),
         )
 
 
@@ -266,27 +310,60 @@ def _generate_room_code(length: int = 6) -> str:
     return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
-def create_room(game_id: str) -> Room:
+def create_room(*, name: str, grade: int | None = None, subject: str | None = None, game_id: str | None = None) -> Room:
     code = _generate_room_code()
     while get_room(code) is not None:
         code = _generate_room_code()
 
-    room = Room(code=code, game_id=game_id, created_at=time.time())
+    room = Room(
+        id=f"room_{uuid4().hex[:10]}",
+        code=code,
+        name=name.strip(),
+        grade=grade,
+        subject=subject,
+        selected_game_id=game_id,
+        created_at=time.time(),
+    )
     with get_connection() as connection:
         connection.execute(
-            "INSERT INTO rooms (code, game_id, status, players_json, created_at) VALUES (?, ?, ?, ?, ?)",
-            (room.code, room.game_id, room.status, json.dumps(room.players), room.created_at),
+            """
+            INSERT INTO rooms (
+                id, code, name, grade, subject, selected_game_id, status,
+                players_json, created_at, updated_at, started_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                room.id,
+                room.code,
+                room.name,
+                room.grade,
+                room.subject,
+                room.selected_game_id,
+                room.status,
+                json.dumps(room.players),
+                room.created_at,
+                room.updated_at,
+                room.started_at,
+                room.finished_at,
+            ),
         )
     return room
 
 
 def _room_from_row(row: sqlite3.Row) -> Room:
     return Room(
+        id=row["id"] or f"room_{row['code']}",
         code=row["code"],
-        game_id=row["game_id"],
+        name=row["name"] or f"Sala {row['code']}",
+        grade=row["grade"],
+        subject=row["subject"],
+        selected_game_id=row["selected_game_id"],
         status=row["status"],
         players=json.loads(row["players_json"]),
         created_at=row["created_at"],
+        updated_at=row["updated_at"] or row["created_at"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
     )
 
 
@@ -305,9 +382,33 @@ def list_rooms() -> list[Room]:
 
 
 def save_room(room: Room) -> Room:
+    room.updated_at = time.time()
     with get_connection() as connection:
         connection.execute(
-            "UPDATE rooms SET status = ?, players_json = ? WHERE code = ?",
-            (room.status, json.dumps(room.players), room.code),
+            """
+            UPDATE rooms SET
+                name = ?,
+                grade = ?,
+                subject = ?,
+                selected_game_id = ?,
+                status = ?,
+                players_json = ?,
+                updated_at = ?,
+                started_at = ?,
+                finished_at = ?
+            WHERE code = ?
+            """,
+            (
+                room.name,
+                room.grade,
+                room.subject,
+                room.selected_game_id,
+                room.status,
+                json.dumps(room.players),
+                room.updated_at,
+                room.started_at,
+                room.finished_at,
+                room.code,
+            ),
         )
     return room

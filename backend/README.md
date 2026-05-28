@@ -26,6 +26,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `POST /api/import/edugame`
 - `PATCH /api/admin/games/{game_id}/{version}`
 - `POST /api/rooms`
+- `PATCH /api/rooms/{code}`
+- `POST /api/rooms/{code}/start`
 - `GET /api/rooms`
 
 ## Observações do MVP
