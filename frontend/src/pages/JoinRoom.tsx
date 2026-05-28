@@ -9,6 +9,7 @@ const STATUS_LABEL: Record<string, string> = {
   active: 'Atividade em andamento',
   finished: 'Atividade encerrada',
 }
+const ROOM_STATUS_POLL_INTERVAL = 3000
 
 export default function JoinRoom() {
   const navigate = useNavigate()
@@ -23,11 +24,14 @@ export default function JoinRoom() {
   const joinedCode = joinedRoomCode ?? null
   const { data: roomLive } = useQuery<Room>({
     queryKey: ['room-by-code', joinedCode],
-    queryFn: () => getRoom(joinedCode!),
+    queryFn: () => {
+      if (!joinedCode) throw new Error('Código de sala ausente')
+      return getRoom(joinedCode)
+    },
     enabled: !!joinedCode,
     refetchInterval: query => {
       const status = query.state.data?.status
-      return status === 'finished' ? false : 3000
+      return status === 'finished' ? false : ROOM_STATUS_POLL_INTERVAL
     },
   })
 

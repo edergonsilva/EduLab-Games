@@ -95,19 +95,19 @@ def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
         row["name"]
         for row in connection.execute("PRAGMA table_info(rooms)").fetchall()
     }
-    required_columns: list[tuple[str, str]] = [
-        ("id", "TEXT"),
-        ("name", "TEXT"),
-        ("grade", "INTEGER"),
-        ("subject", "TEXT"),
-        ("selected_game_id", "TEXT"),
-        ("updated_at", "REAL"),
-        ("started_at", "REAL"),
-        ("finished_at", "REAL"),
-    ]
-    for column_name, column_type in required_columns:
+    alter_statements = {
+        "id": "ALTER TABLE rooms ADD COLUMN id TEXT",
+        "name": "ALTER TABLE rooms ADD COLUMN name TEXT",
+        "grade": "ALTER TABLE rooms ADD COLUMN grade INTEGER",
+        "subject": "ALTER TABLE rooms ADD COLUMN subject TEXT",
+        "selected_game_id": "ALTER TABLE rooms ADD COLUMN selected_game_id TEXT",
+        "updated_at": "ALTER TABLE rooms ADD COLUMN updated_at REAL",
+        "started_at": "ALTER TABLE rooms ADD COLUMN started_at REAL",
+        "finished_at": "ALTER TABLE rooms ADD COLUMN finished_at REAL",
+    }
+    for column_name, statement in alter_statements.items():
         if column_name not in columns:
-            connection.execute(f"ALTER TABLE rooms ADD COLUMN {column_name} {column_type}")
+            connection.execute(statement)
 
     columns = {
         row["name"]
@@ -316,7 +316,7 @@ def create_room(*, name: str, grade: int | None = None, subject: str | None = No
         code = _generate_room_code()
 
     room = Room(
-        id=f"room_{uuid4().hex[:10]}",
+        id=f"room_{uuid4().hex}",
         code=code,
         name=name.strip(),
         grade=grade,

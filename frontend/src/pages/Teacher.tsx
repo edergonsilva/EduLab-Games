@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<string, string> = {
   active: 'Em andamento',
   finished: 'Encerrada',
 }
+const ROOM_POLL_INTERVAL = 3000
 
 export default function Teacher() {
   const navigate = useNavigate()
@@ -56,7 +57,7 @@ export default function Teacher() {
   const { data: rooms = [], isLoading: roomsLoading } = useQuery<Room[]>({
     queryKey: ['rooms'],
     queryFn: getRooms,
-    refetchInterval: 4000,
+    refetchInterval: ROOM_POLL_INTERVAL,
   })
 
   const roomGamesById = useMemo(
@@ -120,12 +121,13 @@ export default function Teacher() {
   })
 
   const handleCreate = () => {
-    if (!roomName.trim()) {
+    const trimmedRoomName = roomName.trim()
+    if (!trimmedRoomName) {
       setError('Informe um nome para a sala/atividade.')
       return
     }
     createRoomMutation.mutate({
-      name: roomName.trim(),
+      name: trimmedRoomName,
       grade,
       subject,
       game_id: effectiveGameId || undefined,
@@ -135,6 +137,11 @@ export default function Teacher() {
   const getRoomSelectedGame = (room: Room): string => {
     if (roomGameSelection[room.code] !== undefined) return roomGameSelection[room.code]
     return room.selected_game_id ?? ''
+  }
+
+  const getRoomGameLabel = (room: Room) => {
+    if (!room.selected_game_id) return 'Não selecionado'
+    return roomGamesById[room.selected_game_id]?.name ?? room.selected_game_id
   }
 
   return (
@@ -234,7 +241,7 @@ export default function Teacher() {
               {rooms.map(room => {
                 const selectedRoomGame = getRoomSelectedGame(room)
                 const canStart = !!selectedRoomGame && room.status === 'waiting'
-                const gameName = room.selected_game_id ? roomGamesById[room.selected_game_id]?.name ?? room.selected_game_id : 'Não selecionado'
+                const gameName = getRoomGameLabel(room)
 
                 return (
                   <div key={room.code} className="room-list-item">

@@ -90,7 +90,7 @@ async def start_room(code: str, body: StartRoomRequest = StartRoomRequest()):
 
     room.selected_game_id = game_id
     room.status = "active"
-    room.started_at = room.started_at or time.time()
+    room.started_at = room.started_at if room.started_at is not None else time.time()
     room.finished_at = None
     return save_room(room)
 

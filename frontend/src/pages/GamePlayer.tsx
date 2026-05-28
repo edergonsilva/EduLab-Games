@@ -23,6 +23,12 @@ type PlatformContext = {
   origin: string
 }
 
+const parseOptionalNumber = (value: string | null): number | undefined => {
+  if (!value) return undefined
+  const parsed = Number(value)
+  return Number.isNaN(parsed) ? undefined : parsed
+}
+
 export default function GamePlayer() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
@@ -37,14 +43,12 @@ export default function GamePlayer() {
   const [gameReady, setGameReady] = useState(false)
 
   const context = useMemo<PlatformContext>(() => {
-    const gradeParam = searchParams.get('grade')
-    const gradeValue = gradeParam ? Number(gradeParam) : undefined
     return {
       mode: searchParams.get('mode') ?? 'solo',
       room_code: searchParams.get('room_code') ?? undefined,
       room_id: searchParams.get('room_id') ?? undefined,
       room_name: searchParams.get('room_name') ?? undefined,
-      grade: Number.isNaN(gradeValue) ? undefined : gradeValue,
+      grade: parseOptionalNumber(searchParams.get('grade')),
       subject: searchParams.get('subject') ?? undefined,
       origin: searchParams.get('origin') ?? 'catalog',
     }
