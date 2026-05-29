@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: ./backend
+    container_name: edulab-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - edulab-data:/app/data_storage
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-edulab@admin}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: edulab-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  edulab-data:

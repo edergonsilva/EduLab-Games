@@ -1,0 +1,11 @@
+[
+  { "id": 1, "label": "1º Ano", "short": "1A" },
+  { "id": 2, "label": "2º Ano", "short": "2A" },
+  { "id": 3, "label": "3º Ano", "short": "3A" },
+  { "id": 4, "label": "4º Ano", "short": "4A" },
+  { "id": 5, "label": "5º Ano", "short": "5A" },
+  { "id": 6, "label": "6º Ano", "short": "6A" },
+  { "id": 7, "label": "7º Ano", "short": "7A" },
+  { "id": 8, "label": "8º Ano", "short": "8A" },
+  { "id": 9, "label": "9º Ano", "short": "9A" }
+]
