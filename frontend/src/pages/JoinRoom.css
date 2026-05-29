@@ -50,3 +50,26 @@
 
 .join-btn  { width: 100%; margin-top: 0.5rem; }
 .back-btn  { margin-top: 1rem; }
+
+.room-info-list {
+  text-align: left;
+  background: #F9FAFB;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.waiting-box {
+  margin-top: 0.75rem;
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  color: #92400E;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}

@@ -88,6 +88,63 @@ meu_jogo_v1.edugame
 4. o admin pode publicar no painel mínimo atual
 5. jogos `published` aparecem no catálogo principal
 
+## Contrato shell ↔ jogo (runner)
+
+### Evento inicial enviado pela plataforma
+
+Assim que o iframe carrega, o runner envia:
+
+```json
+{
+  "type": "platform_context",
+  "schema_version": "1.1",
+  "game": {
+    "id": "meu_jogo",
+    "name": "Meu Jogo",
+    "subject": "matematica",
+    "grades": [2, 3]
+  },
+  "context": {
+    "mode": "solo",
+    "origin": "catalog",
+    "room_code": "123456",
+    "room_id": "room_xxx",
+    "room_name": "Turma de hoje",
+    "grade": 2,
+    "subject": "matematica"
+  }
+}
+```
+
+Campos de sala são opcionais e só aparecem em fluxos de sala por código.
+
+### Eventos esperados do jogo para a plataforma
+
+Eventos já suportados no MVP:
+
+- `game_started`
+- `question_answered`
+- `score_updated`
+- `game_finished`
+
+Eventos opcionais para evolução:
+
+- `ready`
+- `request_state`
+- `pause`
+
+Também é aceito o formato envelope:
+
+```json
+{ "type": "edulab_event", "event": "ready" }
+```
+
+Quando o jogo envia `ready` ou `request_state`, o runner responde com:
+
+```json
+{ "type": "platform_state", "score": 10, "started": true, "finished": false }
+```
+
 ## Empacotando um exemplo
 
 ```bash

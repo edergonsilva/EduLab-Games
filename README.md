@@ -5,14 +5,16 @@ Plataforma local-first de jogos educativos para laboratórios de informática es
 > Desenvolvida por **Ederson Gonçalves da Silva**  
 > Visual inspirado nas cores da bandeira de Itajaí (amarelo & roxo)
 
-## O que já é possível testar nesta versão (Prioridade 2)
+## O que já é possível testar nesta versão (Prioridade 3)
 
 - **execução real de jogos** — catálogo abre jogos num runner iframe completo
 - 3 jogos seed funcionais: Quiz de Múltipla Escolha, Arrastar e Soltar, Desafio de Contas
 - importação e execução de jogos `.edugame` importados pelo admin
-- comunicação shell ↔ jogo via `window.postMessage` (`game_started`, `question_answered`, `score_updated`, `game_finished`)
+- comunicação shell ↔ jogo via `window.postMessage` com contexto inicial da plataforma
 - painel admin com publicação/despublicação e botão de teste direto
 - catálogo com jogos base + jogos importados persistidos em SQLite
+- fluxo de sala por código funcional com criação, seleção de jogo e início de atividade pelo professor
+- entrada de aluno por código com estado de espera e abertura automática do jogo quando a sala estiver ativa
 
 ## Serviços
 
@@ -84,12 +86,25 @@ http://localhost:8000/health
 - Clique em **▶ Testar** no card do jogo — abre o runner diretamente
 - Ou volte ao catálogo, selecione o ano/disciplina correto e clique em **Jogar Agora**
 
-### 7. Validar os eventos no runner
+### 7. Fluxo sala por código (Prioridade 3)
+1. Acesse `http://localhost:3000/professor`
+2. Crie uma sala (nome + ano/disciplina opcional + jogo com modo `sala_codigo`)
+3. Na lista de salas, confirme status e clique em **Iniciar atividade**
+4. Em outro navegador, acesse `http://localhost:3000/entrar-sala`
+5. Informe o código e nome do aluno
+6. Se a sala estiver em `waiting`, a tela mostra estado de espera amigável
+7. Ao ficar `active`, o aluno pode clicar em **Entrar no jogo da sala**
+
+### 8. Validar os eventos/contexto no runner
 - No runner (`/jogar/:gameId`), ao jogar, o painel **🔍 Eventos do jogo** (expansível) mostra os eventos recebidos via `postMessage`:
   - `game_started`
   - `question_answered` com resultado e pontuação
   - `score_updated`
   - `game_finished` com resultado final
+- O runner envia contexto inicial (`platform_context`) com:
+  - `mode`, `origin`
+  - `room_code`, `room_id`, `room_name` (quando aplicável)
+  - `grade`, `subject` (quando aplicável)
 
 ## Geração de pacote `.edugame` de exemplo
 
