@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createRoom,
   finishRoom,
+  getActivities,
   getGames,
   getGrades,
   getRooms,
   getSubjects,
   startRoom,
   updateRoom,
+  type Activity,
   type Game,
   type Grade,
   type Room,
@@ -22,7 +24,19 @@ const STATUS_LABEL: Record<string, string> = {
   active: 'Em andamento',
   finished: 'Encerrada',
 }
+const ACTIVITY_STATUS_LABEL: Record<string, string> = {
+  created: 'Criada',
+  waiting: 'Aguardando',
+  active: 'Ativa',
+  finished: 'Finalizada',
+  aborted: 'Abortada',
+}
 const ROOM_POLL_INTERVAL = 3000
+
+function formatTimestamp(value?: number | null) {
+  if (!value) return '—'
+  return new Date(value * 1000).toLocaleString('pt-BR')
+}
 
 export default function Teacher() {
   const navigate = useNavigate()
@@ -59,10 +73,25 @@ export default function Teacher() {
     queryFn: getRooms,
     refetchInterval: ROOM_POLL_INTERVAL,
   })
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery<Activity[]>({
+    queryKey: ['activities'],
+    queryFn: () => getActivities(12),
+    refetchInterval: ROOM_POLL_INTERVAL,
+  })
 
   const roomGamesById = useMemo(
     () => Object.fromEntries(allRoomGames.map(game => [game.id, game])),
     [allRoomGames],
+  )
+  const activitiesByRoomCode = useMemo(
+    () =>
+      activities.reduce<Record<string, Activity>>((accumulator, activity) => {
+        if (activity.room_code && !accumulator[activity.room_code]) {
+          accumulator[activity.room_code] = activity
+        }
+        return accumulator
+      }, {}),
+    [activities],
   )
 
   const effectiveGameId = roomGamesFiltered.some(game => game.id === gameId)
@@ -71,6 +100,7 @@ export default function Teacher() {
 
   const refreshRooms = async () => {
     await queryClient.invalidateQueries({ queryKey: ['rooms'] })
+    await queryClient.invalidateQueries({ queryKey: ['activities'] })
   }
 
   const createRoomMutation = useMutation({
@@ -242,6 +272,7 @@ export default function Teacher() {
                 const selectedRoomGame = getRoomSelectedGame(room)
                 const canStart = !!selectedRoomGame && room.status === 'waiting'
                 const gameName = getRoomGameLabel(room)
+                const latestActivity = activitiesByRoomCode[room.code]
 
                 return (
                   <div key={room.code} className="room-list-item">
@@ -251,6 +282,11 @@ export default function Teacher() {
                       <div className="room-list-meta">
                         {room.grade ? `${room.grade}º ano` : 'Todos os anos'} • {room.subject ?? 'Todas as disciplinas'}
                       </div>
+                      {latestActivity && (
+                        <div className="room-list-meta">
+                          Atividade {latestActivity.id.slice(-8)} • {latestActivity.event_count} evento(s) • score final {latestActivity.last_score ?? '—'}
+                        </div>
+                      )}
                     </div>
                     <div className="room-list-side">
                       <span className="badge badge-purple">{STATUS_LABEL[room.status] ?? room.status}</span>
@@ -307,12 +343,46 @@ export default function Teacher() {
         </div>
 
         <div className="card teacher-card">
+          <h3 className="card-heading">🕘 Histórico recente de atividades</h3>
+          {activitiesLoading ? (
+            <div className="placeholder-area">⏳ Carregando atividades...</div>
+          ) : activities.length === 0 ? (
+            <div className="placeholder-area">Nenhuma atividade registrada ainda.</div>
+          ) : (
+            <div className="room-list">
+              {activities.map(activity => (
+                <div key={activity.id} className="room-list-item">
+                  <div className="room-list-main">
+                    <strong>{activity.title ?? activity.game_name ?? activity.game_id}</strong>
+                    <div className="room-list-meta">
+                      {activity.room_code ? `Sala ${activity.room_code}` : 'Execução direta'} • {activity.game_name ?? activity.game_id}
+                    </div>
+                    <div className="room-list-meta">
+                      Início: {formatTimestamp(activity.started_at)} • Fim: {formatTimestamp(activity.finished_at)}
+                    </div>
+                    <div className="room-list-meta">
+                      Último evento: {formatTimestamp(activity.last_event_at)} • Última pontuação: {activity.last_score ?? '—'}
+                    </div>
+                  </div>
+                  <div className="room-list-side">
+                    <span className="badge badge-purple">{ACTIVITY_STATUS_LABEL[activity.status] ?? activity.status}</span>
+                    <small>{activity.event_count} evento(s)</small>
+                    <small>{activity.game_finished ? '🏁 Finalizada pelo jogo' : activity.game_started ? '▶ Jogo iniciado' : '⏳ Sem início do jogo'}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card teacher-card">
           <h3 className="card-heading">📌 Fluxo recomendado</h3>
           <div className="placeholder-area">
             <p>1) Crie a sala e projete o código</p>
             <p>2) Escolha e salve o jogo da atividade</p>
-            <p>3) Clique em <strong>Iniciar atividade</strong></p>
+            <p>3) Clique em <strong>Iniciar atividade</strong> para gerar a sessão persistida</p>
             <p>4) Alunos entram em <code>/entrar-sala</code> e aguardam ou jogam conforme status</p>
+            <p>5) Consulte o histórico acima para ver timestamps, eventos e score final</p>
           </div>
         </div>
       </div>

@@ -10,6 +10,7 @@ import zipfile
 from uuid import uuid4
 
 from app.config import settings
+from app.models.activity import Activity, ActivityEvent
 from app.models.game import GameManifest
 from app.models.room import Room
 
@@ -87,7 +88,46 @@ def initialize_storage() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS activities (
+                id TEXT PRIMARY KEY,
+                room_id TEXT,
+                room_code TEXT,
+                game_id TEXT NOT NULL,
+                origin TEXT NOT NULL,
+                status TEXT NOT NULL,
+                title TEXT,
+                grade INTEGER,
+                subject TEXT,
+                created_at REAL NOT NULL,
+                started_at REAL,
+                finished_at REAL,
+                updated_at REAL NOT NULL,
+                last_event_at REAL,
+                event_count INTEGER NOT NULL DEFAULT 0,
+                game_started INTEGER NOT NULL DEFAULT 0,
+                game_finished INTEGER NOT NULL DEFAULT 0,
+                last_score REAL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS activity_events (
+                id TEXT PRIMARY KEY,
+                activity_id TEXT NOT NULL,
+                room_id TEXT,
+                room_code TEXT,
+                game_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """
+        )
         _ensure_rooms_schema(connection)
+        _ensure_activities_schema(connection)
 
 
 def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
@@ -101,6 +141,7 @@ def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
         "grade": "ALTER TABLE rooms ADD COLUMN grade INTEGER",
         "subject": "ALTER TABLE rooms ADD COLUMN subject TEXT",
         "selected_game_id": "ALTER TABLE rooms ADD COLUMN selected_game_id TEXT",
+        "current_activity_id": "ALTER TABLE rooms ADD COLUMN current_activity_id TEXT",
         "updated_at": "ALTER TABLE rooms ADD COLUMN updated_at REAL",
         "started_at": "ALTER TABLE rooms ADD COLUMN started_at REAL",
         "finished_at": "ALTER TABLE rooms ADD COLUMN finished_at REAL",
@@ -123,6 +164,24 @@ def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
             "UPDATE rooms SET updated_at = COALESCE(updated_at, created_at, ?) WHERE updated_at IS NULL OR updated_at = 0",
             (now,),
         )
+
+
+def _ensure_activities_schema(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(activities)").fetchall()
+    }
+    alter_statements = {
+        "game_name": "ALTER TABLE activities ADD COLUMN game_name TEXT",
+        "last_event_at": "ALTER TABLE activities ADD COLUMN last_event_at REAL",
+        "event_count": "ALTER TABLE activities ADD COLUMN event_count INTEGER NOT NULL DEFAULT 0",
+        "game_started": "ALTER TABLE activities ADD COLUMN game_started INTEGER NOT NULL DEFAULT 0",
+        "game_finished": "ALTER TABLE activities ADD COLUMN game_finished INTEGER NOT NULL DEFAULT 0",
+        "last_score": "ALTER TABLE activities ADD COLUMN last_score REAL",
+    }
+    for column_name, statement in alter_statements.items():
+        if column_name not in columns:
+            connection.execute(statement)
 
 
 def _safe_slug(value: str) -> str:
@@ -328,9 +387,9 @@ def create_room(*, name: str, grade: int | None = None, subject: str | None = No
         connection.execute(
             """
             INSERT INTO rooms (
-                id, code, name, grade, subject, selected_game_id, status,
+                id, code, name, grade, subject, selected_game_id, current_activity_id, status,
                 players_json, created_at, updated_at, started_at, finished_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 room.id,
@@ -339,6 +398,7 @@ def create_room(*, name: str, grade: int | None = None, subject: str | None = No
                 room.grade,
                 room.subject,
                 room.selected_game_id,
+                room.current_activity_id,
                 room.status,
                 json.dumps(room.players),
                 room.created_at,
@@ -358,6 +418,7 @@ def _room_from_row(row: sqlite3.Row) -> Room:
         grade=row["grade"],
         subject=row["subject"],
         selected_game_id=row["selected_game_id"],
+        current_activity_id=row["current_activity_id"] if "current_activity_id" in row.keys() else None,
         status=row["status"],
         players=json.loads(row["players_json"]),
         created_at=row["created_at"],
@@ -391,6 +452,7 @@ def save_room(room: Room) -> Room:
                 grade = ?,
                 subject = ?,
                 selected_game_id = ?,
+                current_activity_id = ?,
                 status = ?,
                 players_json = ?,
                 updated_at = ?,
@@ -403,6 +465,7 @@ def save_room(room: Room) -> Room:
                 room.grade,
                 room.subject,
                 room.selected_game_id,
+                room.current_activity_id,
                 room.status,
                 json.dumps(room.players),
                 room.updated_at,
@@ -412,3 +475,313 @@ def save_room(room: Room) -> Room:
             ),
         )
     return room
+
+
+def _activity_from_row(row: sqlite3.Row) -> Activity:
+    game_name = row["game_name"] if "game_name" in row.keys() else None
+    return Activity(
+        id=row["id"],
+        room_id=row["room_id"],
+        room_code=row["room_code"],
+        game_id=row["game_id"],
+        game_name=game_name,
+        origin=row["origin"],
+        status=row["status"],
+        title=row["title"],
+        grade=row["grade"],
+        subject=row["subject"],
+        created_at=row["created_at"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        updated_at=row["updated_at"],
+        last_event_at=row["last_event_at"] if "last_event_at" in row.keys() else None,
+        event_count=row["event_count"] if "event_count" in row.keys() else 0,
+        game_started=bool(row["game_started"]) if "game_started" in row.keys() else False,
+        game_finished=bool(row["game_finished"]) if "game_finished" in row.keys() else False,
+        last_score=row["last_score"] if "last_score" in row.keys() else None,
+    )
+
+
+def _activity_event_from_row(row: sqlite3.Row) -> ActivityEvent:
+    return ActivityEvent(
+        id=row["id"],
+        activity_id=row["activity_id"],
+        room_id=row["room_id"],
+        room_code=row["room_code"],
+        game_id=row["game_id"],
+        event_type=row["event_type"],
+        payload=json.loads(row["payload_json"]),
+        created_at=row["created_at"],
+    )
+
+
+def create_activity(
+    *,
+    game_id: str,
+    origin: str,
+    room_id: str | None = None,
+    room_code: str | None = None,
+    title: str | None = None,
+    grade: int | None = None,
+    subject: str | None = None,
+    status: str = "created",
+    started_at: float | None = None,
+    finished_at: float | None = None,
+) -> Activity:
+    timestamp = time.time()
+    game = get_game(game_id, status=None)
+    activity = Activity(
+        id=f"activity_{uuid4().hex}",
+        room_id=room_id,
+        room_code=room_code,
+        game_id=game_id,
+        game_name=game.name if game else None,
+        origin=origin,
+        status=status,
+        title=title,
+        grade=grade,
+        subject=subject,
+        created_at=timestamp,
+        started_at=started_at,
+        finished_at=finished_at,
+        updated_at=timestamp,
+    )
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO activities (
+                id, room_id, room_code, game_id, game_name, origin, status, title, grade, subject,
+                created_at, started_at, finished_at, updated_at, last_event_at, event_count,
+                game_started, game_finished, last_score
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                activity.id,
+                activity.room_id,
+                activity.room_code,
+                activity.game_id,
+                activity.game_name,
+                activity.origin,
+                activity.status,
+                activity.title,
+                activity.grade,
+                activity.subject,
+                activity.created_at,
+                activity.started_at,
+                activity.finished_at,
+                activity.updated_at,
+                activity.last_event_at,
+                activity.event_count,
+                int(activity.game_started),
+                int(activity.game_finished),
+                activity.last_score,
+            ),
+        )
+    return activity
+
+
+def get_activity(activity_id: str) -> Activity | None:
+    with get_connection() as connection:
+        row = connection.execute("SELECT * FROM activities WHERE id = ?", (activity_id,)).fetchone()
+    if row is None:
+        return None
+    return _activity_from_row(row)
+
+
+def get_room_current_activity(room_code: str) -> Activity | None:
+    room = get_room(room_code)
+    if room is None or not room.current_activity_id:
+        return None
+    return get_activity(room.current_activity_id)
+
+
+def list_activities(limit: int = 30) -> list[Activity]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            "SELECT * FROM activities ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [_activity_from_row(row) for row in rows]
+
+
+def list_activity_events(activity_id: str, limit: int = 25) -> list[ActivityEvent]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT * FROM activity_events
+            WHERE activity_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (activity_id, limit),
+        ).fetchall()
+    return [_activity_event_from_row(row) for row in rows]
+
+
+def save_activity(activity: Activity) -> Activity:
+    activity.updated_at = time.time()
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE activities SET
+                room_id = ?,
+                room_code = ?,
+                game_id = ?,
+                game_name = ?,
+                origin = ?,
+                status = ?,
+                title = ?,
+                grade = ?,
+                subject = ?,
+                started_at = ?,
+                finished_at = ?,
+                updated_at = ?,
+                last_event_at = ?,
+                event_count = ?,
+                game_started = ?,
+                game_finished = ?,
+                last_score = ?
+            WHERE id = ?
+            """,
+            (
+                activity.room_id,
+                activity.room_code,
+                activity.game_id,
+                activity.game_name,
+                activity.origin,
+                activity.status,
+                activity.title,
+                activity.grade,
+                activity.subject,
+                activity.started_at,
+                activity.finished_at,
+                activity.updated_at,
+                activity.last_event_at,
+                activity.event_count,
+                int(activity.game_started),
+                int(activity.game_finished),
+                activity.last_score,
+                activity.id,
+            ),
+        )
+    return activity
+
+
+def ensure_activity(
+    *,
+    activity_id: str | None,
+    game_id: str,
+    origin: str,
+    room_id: str | None = None,
+    room_code: str | None = None,
+    title: str | None = None,
+    grade: int | None = None,
+    subject: str | None = None,
+) -> Activity:
+    if activity_id:
+        existing = get_activity(activity_id)
+        if existing is not None:
+            return existing
+
+    if origin == "room" and room_code:
+        room = get_room(room_code)
+        if room is not None and room.current_activity_id:
+            existing = get_activity(room.current_activity_id)
+            if existing is not None:
+                return existing
+        status = "active" if room and room.status == "active" else "waiting"
+        activity = create_activity(
+            game_id=game_id,
+            origin=origin,
+            room_id=room.id if room else room_id,
+            room_code=room.code if room else room_code,
+            title=title or (room.name if room else None),
+            grade=room.grade if room else grade,
+            subject=room.subject if room else subject,
+            status=status,
+            started_at=room.started_at if room and room.status == "active" else None,
+            finished_at=room.finished_at if room and room.status == "finished" else None,
+        )
+        if room is not None:
+            room.current_activity_id = activity.id
+            save_room(room)
+        return activity
+
+    return create_activity(
+        game_id=game_id,
+        origin=origin,
+        room_id=room_id,
+        room_code=room_code,
+        title=title,
+        grade=grade,
+        subject=subject,
+        status="created",
+    )
+
+
+def finish_activity(activity_id: str, *, status: str = "finished", finished_at: float | None = None) -> Activity | None:
+    activity = get_activity(activity_id)
+    if activity is None:
+        return None
+    activity.status = status
+    activity.finished_at = finished_at if finished_at is not None else time.time()
+    activity.game_finished = activity.game_finished or status == "finished"
+    return save_activity(activity)
+
+
+def record_activity_event(activity_id: str, *, event_type: str, payload: dict | None = None) -> Activity | None:
+    activity = get_activity(activity_id)
+    if activity is None:
+        return None
+
+    timestamp = time.time()
+    event = ActivityEvent(
+        id=f"event_{uuid4().hex}",
+        activity_id=activity.id,
+        room_id=activity.room_id,
+        room_code=activity.room_code,
+        game_id=activity.game_id,
+        event_type=event_type,
+        payload=payload or {},
+        created_at=timestamp,
+    )
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO activity_events (
+                id, activity_id, room_id, room_code, game_id, event_type, payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event.id,
+                event.activity_id,
+                event.room_id,
+                event.room_code,
+                event.game_id,
+                event.event_type,
+                json.dumps(event.payload),
+                event.created_at,
+            ),
+        )
+
+    activity.event_count += 1
+    activity.last_event_at = timestamp
+    if event_type == "game_started":
+        activity.game_started = True
+        activity.status = "active"
+        if activity.started_at is None:
+            activity.started_at = timestamp
+    elif event_type in {"question_answered", "score_updated", "game_finished"}:
+        score = event.payload.get("score")
+        if isinstance(score, (int, float)):
+            activity.last_score = float(score)
+        if activity.status == "created":
+            activity.status = "active"
+            activity.started_at = activity.started_at or timestamp
+    if event_type == "game_finished":
+        activity.game_finished = True
+        activity.status = "finished"
+        activity.finished_at = activity.finished_at or timestamp
+
+    return save_activity(activity)

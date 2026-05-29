@@ -3,8 +3,9 @@ import time
 from fastapi import APIRouter, HTTPException
 
 from app.models.room import CreateRoomRequest, JoinRoomRequest, Room, StartRoomRequest, UpdateRoomRequest
-from app.services.storage import create_room as create_persistent_room
-from app.services.storage import get_game, get_room, list_rooms as list_persistent_rooms, save_room
+from app.services.storage import create_activity, create_room as create_persistent_room
+from app.services.storage import finish_activity, get_game, get_room, list_rooms as list_persistent_rooms
+from app.services.storage import record_activity_event, save_room
 
 router = APIRouter()
 
@@ -46,7 +47,14 @@ async def join_room(code: str, body: JoinRoomRequest):
         raise HTTPException(status_code=400, detail="Esta sala já foi encerrada.")
     if body.player_name not in room.players:
         room.players.append(body.player_name)
-    return save_room(room)
+    room = save_room(room)
+    if room.current_activity_id:
+        record_activity_event(
+            room.current_activity_id,
+            event_type="room_joined",
+            payload={"player_name": body.player_name, "source": "room_join"},
+        )
+    return room
 
 
 @router.patch("/{code}", response_model=Room)
@@ -92,6 +100,18 @@ async def start_room(code: str, body: StartRoomRequest = StartRoomRequest()):
     room.status = "active"
     room.started_at = room.started_at if room.started_at is not None else time.time()
     room.finished_at = None
+    activity = create_activity(
+        game_id=game_id,
+        origin="room",
+        room_id=room.id,
+        room_code=room.code,
+        title=room.name,
+        grade=room.grade,
+        subject=room.subject,
+        status="active",
+        started_at=room.started_at,
+    )
+    room.current_activity_id = activity.id
     return save_room(room)
 
 
@@ -103,6 +123,8 @@ async def finish_room(code: str):
         raise HTTPException(status_code=404, detail="Sala não encontrada.")
     room.status = "finished"
     room.finished_at = time.time()
+    if room.current_activity_id:
+        finish_activity(room.current_activity_id, finished_at=room.finished_at)
     return save_room(room)
 
 

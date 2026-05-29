@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getGame, type Game } from '../services/api'
+import { ensureActivity, getGame, recordActivityEvent, type Activity, type Game } from '../services/api'
 import './GamePlayer.css'
 
 type GameEvent =
@@ -23,6 +23,21 @@ type PlatformContext = {
   origin: string
 }
 
+type PersistedEventType = 'game_started' | 'question_answered' | 'score_updated' | 'game_finished' | 'pause'
+
+const PERSISTED_EVENT_TYPES: PersistedEventType[] = [
+  'game_started',
+  'question_answered',
+  'score_updated',
+  'game_finished',
+  'pause',
+]
+
+const MODE_LABEL: Record<string, string> = {
+  solo: 'Solo',
+  sala_codigo: 'Sala',
+}
+
 const parseOptionalNumber = (value: string | null): number | undefined => {
   if (!value) return undefined
   const parsed = Number(value)
@@ -41,6 +56,9 @@ export default function GamePlayer() {
   const [gameStarted, setGameStarted] = useState(false)
   const [gameFinished, setGameFinished] = useState(false)
   const [gameReady, setGameReady] = useState(false)
+  const [activity, setActivity] = useState<Activity | null>(null)
+  const [activityError, setActivityError] = useState('')
+  const runnerOpenedRef = useRef<string | null>(null)
 
   const context = useMemo<PlatformContext>(() => {
     return {
@@ -64,6 +82,89 @@ export default function GamePlayer() {
     enabled: !!gameId,
     retry: false,
   })
+
+  const contextError = useMemo(() => {
+    if (context.mode === 'sala_codigo' && !context.room_code) {
+      return 'Esta execução exige um contexto válido de sala para registrar a atividade.'
+    }
+    return ''
+  }, [context.mode, context.room_code])
+
+  useEffect(() => {
+    if (!gameId || !game || contextError) return
+    let cancelled = false
+    const currentGame = game
+
+    async function prepareActivity() {
+      try {
+        const ensured = await ensureActivity({
+          activity_id: activity?.id ?? undefined,
+          room_id: context.room_id,
+          room_code: context.room_code,
+          game_id: currentGame.id,
+          origin: context.origin === 'admin-test' ? 'admin-test' : context.room_code ? 'room' : 'solo',
+          title: context.room_name ?? currentGame.name,
+          grade: context.grade,
+          subject: context.subject,
+        })
+        if (cancelled) return
+        setActivity(ensured)
+        setActivityError('')
+        if (runnerOpenedRef.current !== ensured.id) {
+          runnerOpenedRef.current = ensured.id
+          const updated = await recordActivityEvent(ensured.id, 'runner_opened', {
+            mode: context.mode,
+            origin: context.origin,
+            room_code: context.room_code,
+          })
+          if (!cancelled) setActivity(updated)
+        }
+      } catch (error) {
+        console.error('[EduLab Runner] failed to prepare activity', error)
+        if (!cancelled) {
+          setActivity(null)
+          setActivityError('Não foi possível preparar a sessão desta atividade no servidor.')
+        }
+      }
+    }
+
+    void prepareActivity()
+    return () => {
+      cancelled = true
+    }
+  }, [activity?.id, context.grade, context.mode, context.origin, context.room_code, context.room_id, context.room_name, context.subject, contextError, game, gameId])
+
+  const postPlatformContext = useCallback(() => {
+    if (!iframeRef.current?.contentWindow || !game) return
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: 'platform_context',
+        schema_version: '1.2',
+        game: {
+          id: game.id,
+          name: game.name,
+          subject: game.subject,
+          grades: game.school_grades,
+        },
+        activity: activity
+          ? {
+              id: activity.id,
+              status: activity.status,
+              origin: activity.origin,
+            }
+          : null,
+        context,
+      },
+      window.location.origin,
+    )
+    console.info('[EduLab Runner] context sent to game', { gameId: game.id, context, activityId: activity?.id })
+  }, [activity, context, game])
+
+  useEffect(() => {
+    if (iframeLoaded) {
+      postPlatformContext()
+    }
+  }, [iframeLoaded, postPlatformContext])
 
   // Listen for postMessage events from the game iframe.
   // Games served from /static/ share the platform origin; sandboxed iframes
@@ -124,36 +225,26 @@ export default function GamePlayer() {
         }
       }
 
+      if (activity && PERSISTED_EVENT_TYPES.includes(normalizedType as PersistedEventType)) {
+        void recordActivityEvent(activity.id, normalizedType as PersistedEventType, normalizedMessage)
+          .then(updated => setActivity(updated))
+          .catch(error => console.error('[EduLab Runner] failed to persist game event', normalizedType, error))
+      }
+
       setEvents(prev => [...prev.slice(-49), gameEvent])
       console.info('[EduLab Runner] game event:', normalizedType, normalizedMessage)
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [gameFinished, gameStarted, score])
+  }, [activity, gameFinished, gameStarted, score])
 
   // Send initial context to the game once iframe loads
   function handleIframeLoad() {
     setIframeLoaded(true)
     setIframeError(false)
     setGameReady(false)
-    if (iframeRef.current?.contentWindow && game) {
-      iframeRef.current.contentWindow.postMessage(
-        {
-          type: 'platform_context',
-          schema_version: '1.1',
-          game: {
-            id: game.id,
-            name: game.name,
-            subject: game.subject,
-            grades: game.school_grades,
-          },
-          context,
-        },
-        window.location.origin,
-      )
-      console.info('[EduLab Runner] context sent to game', { gameId: game.id, context })
-    }
+    postPlatformContext()
   }
 
   function handleIframeError() {
@@ -162,6 +253,7 @@ export default function GamePlayer() {
   }
 
   const roomChip = context.room_code ? `Sala ${context.room_code}` : null
+  const modeChip = MODE_LABEL[context.mode] ?? context.mode
 
   if (isLoading) {
     return (
@@ -211,6 +303,21 @@ export default function GamePlayer() {
     )
   }
 
+  if (contextError) {
+    return (
+      <div className="player-page">
+        <div className="player-error card">
+          <div className="player-error-icon">🧭</div>
+          <h2>Contexto inválido</h2>
+          <p>{contextError}</p>
+          <button className="btn btn-primary" onClick={() => navigate(-1)}>
+            ← Voltar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="player-page">
       {/* Header bar */}
@@ -228,7 +335,11 @@ export default function GamePlayer() {
           {roomChip && (
             <span className="player-room-badge">{roomChip}</span>
           )}
+          <span className="player-origin-badge">modo: {modeChip}</span>
           <span className="player-origin-badge">origem: {context.origin}</span>
+          {activity && (
+            <span className="player-origin-badge">atividade: {activity.id.slice(-8)}</span>
+          )}
           {gameReady && (
             <span className="player-status-badge player-status-ready">✅ Pronto</span>
           )}
@@ -269,6 +380,13 @@ export default function GamePlayer() {
           >
             Tentar novamente
           </button>
+        </div>
+      )}
+
+      {activityError && !iframeError && (
+        <div className="player-overlay player-overlay-error">
+          <div className="player-error-icon">📝</div>
+          <p>{activityError}</p>
         </div>
       )}
 
