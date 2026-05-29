@@ -1,45 +1,28 @@
-import json
-from pathlib import Path
 from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Query
+
 from app.models.game import GameManifest
+from app.services.storage import get_game, list_games
 
 router = APIRouter()
-_data = Path("app/data")
-
-
-def _load_games() -> list[dict]:
-    with open(_data / "games.json", encoding="utf-8") as f:
-        return json.load(f)
 
 
 @router.get("", response_model=list[GameManifest])
-async def list_games(
+async def list_games_route(
     subject: Optional[str] = Query(None, description="Filtrar por disciplina"),
     grade: Optional[int] = Query(None, description="Filtrar por ano escolar"),
     mode: Optional[str] = Query(None, description="Filtrar por modo de jogo"),
     status: Optional[str] = Query("published", description="Status do jogo"),
 ):
-    """Retorna o catálogo de jogos, com filtros opcionais."""
-    games = _load_games()
-
-    if status:
-        games = [g for g in games if g.get("status") == status]
-    if subject:
-        games = [g for g in games if g.get("subject") == subject or g.get("subject") is None]
-    if grade is not None:
-        games = [g for g in games if grade in g.get("school_grades", [])]
-    if mode:
-        games = [g for g in games if mode in g.get("mode", [])]
-
-    return games
+    """Retorna o catálogo de jogos, combinando jogos base e jogos importados."""
+    return list_games(subject=subject, grade=grade, mode=mode, status=status)
 
 
 @router.get("/{game_id}", response_model=GameManifest)
-async def get_game(game_id: str):
+async def get_game_route(game_id: str, version: Optional[str] = Query(None)):
     """Retorna os detalhes de um jogo pelo ID."""
-    games = _load_games()
-    for g in games:
-        if g["id"] == game_id:
-            return g
+    game = get_game(game_id, version=version, status=None)
+    if game:
+        return game
     raise HTTPException(status_code=404, detail="Jogo não encontrado.")

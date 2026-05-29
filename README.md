@@ -1,127 +1,75 @@
 # 🎮 EduLab Games
 
-**Plataforma de jogos educativos para laboratórios de informática escolares.**
+Plataforma local-first de jogos educativos para laboratórios de informática escolares.
 
 > Desenvolvida por **Ederson Gonçalves da Silva**  
 > Visual inspirado nas cores da bandeira de Itajaí (amarelo & roxo)
 
----
+## O que já é possível testar neste bootstrap
 
-## ✨ O que é o EduLab Games?
+- catálogo com jogos base + jogos importados persistidos em SQLite
+- painel admin com login por senha local, upload real de `.edugame` e publicação básica
+- salas persistidas localmente para teste do fluxo professor/aluno
+- backend FastAPI + frontend React/Vite prontos para Docker em Linux Mint
 
-EduLab Games é uma plataforma *local-first* que transforma o laboratório de informática
-da escola em um ambiente de aprendizagem interativo e gamificado. Professores criam salas
-com código (estilo Kahoot), alunos acessam pelo navegador, e jogos educativos são
-distribuídos como módulos `.edugame` importáveis.
+## Serviços
 
-## 🏫 Disciplinas (MVP)
+| Serviço | URL padrão |
+|---------|------------|
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:8000 |
+| Swagger | http://localhost:8000/docs |
+| Health | http://localhost:8000/health |
 
-| Disciplina | | Disciplina |
-|---|---|---|
-| 🔢 Matemática | | 📖 Língua Portuguesa |
-| 🌎 Língua Estrangeira - Inglês | | 📜 História |
-| 🗺️ Geografia | | 🔬 Ciências |
-| 🎨 Artes | | ✨ Ensino Religioso |
-| ⚽ Educação Física | | 🚀 Projeto Integrador |
-| 🎵 Musicalização | | |
+## Persistência local
 
-## 🕹️ Modos de Jogo
+Os dados do MVP local ficam em `backend/data_storage/` quando executado sem Docker.
 
-- 🎯 **Solo** — jogo individual
-- ⚔️ **Duelo Local** — 2 jogadores no mesmo computador
-- 🌐 **Sala por Código** — múltiplos computadores via código único
+Arquivos principais:
+- banco SQLite: `backend/data_storage/edulab.sqlite3`
+- pacotes enviados: `backend/data_storage/packages/`
+- assets/thumbnails extraídos: `backend/data_storage/static/imported/`
 
-## 🚀 Como Rodar
+Com Docker, esse conteúdo fica no volume `edulab-data` montado em `/app/data_storage` dentro do container do backend.
 
-### Com Docker (recomendado)
+## Subindo com Docker (recomendado)
 
 ```bash
 git clone https://github.com/edergonsilva/EduLab-Games.git
 cd EduLab-Games
+cp .env.example .env 2>/dev/null || true
+# ou crie manualmente e defina a senha do admin
+# echo "ADMIN_PASSWORD=minha-senha" > .env
 
-# Configurar senha do admin (opcional)
-echo "ADMIN_PASSWORD=minha-senha" > .env
-
-# Subir os serviços
 docker compose up --build
 ```
 
-| Serviço | URL |
-|---------|-----|
-| 🌐 Plataforma | http://localhost:3000 |
-| 🔧 API Backend | http://localhost:8000 |
-| 📖 Docs da API | http://localhost:8000/docs |
+Senha padrão do admin, caso nenhuma variável seja definida: `edulab@admin`
 
-Consulte [`docs/how-to-run.md`](docs/how-to-run.md) para mais detalhes,
-incluindo modo de desenvolvimento local.
+## Roteiro rápido de smoke test manual
 
-## 📦 Módulos de Jogo (.edugame)
+1. subir os containers com `docker compose up --build`
+2. validar `http://localhost:8000/health`
+3. abrir `http://localhost:3000`
+4. acessar **Professor** e criar uma sala
+5. acessar **Entrar na Sala** e consultar o código criado
+6. acessar **Admin** e fazer login
+7. importar um `.edugame`
+8. opcionalmente publicar o jogo importado no painel admin
+9. voltar ao catálogo e confirmar se o jogo publicado aparece na listagem
 
-Os jogos são empacotados como arquivos `.edugame` (ZIP renomeado) com manifesto JSON.
-Veja o exemplo em [`examples/quiz-basico/`](examples/quiz-basico/) e a especificação
-completa em [`docs/edugame-spec.md`](docs/edugame-spec.md).
+## Catálogo e modos de jogo
 
-```json
-{
-  "id": "mat_contas_001",
-  "name": "Contas Básicas",
-  "version": "1.0.0",
-  "developer": "Seu Nome",
-  "mode": ["solo"],
-  "school_grades": [1, 2, 3],
-  "subject": "matematica",
-  "entry_point": "index.html",
-  "api_version": "1.0"
-}
-```
+- 🎯 **Solo** — jogo individual
+- ⚔️ **Duelo Local** — 2 jogadores no mesmo computador
+- 🌐 **Sala por Código** — partida via código de sala
 
-## 📁 Estrutura do Repositório
+Jogos podem combinar modos. Quando um jogo suporta `solo` e `sala_codigo`, o catálogo mostra as duas ações; `session_required` só é tratado como obrigatório quando o jogo funciona **apenas** com sala.
 
-```
-EduLab-Games/
-├── backend/           # API Python/FastAPI
-│   ├── app/
-│   │   ├── routers/   # Rotas da API
-│   │   ├── models/    # Schemas Pydantic
-│   │   ├── services/  # Lógica de negócio
-│   │   └── data/      # Dados estáticos (anos, disciplinas, jogos)
-│   └── Dockerfile
-├── frontend/          # React + Vite + TypeScript
-│   ├── src/
-│   │   ├── pages/     # Telas da aplicação
-│   │   ├── components/# Componentes reutilizáveis
-│   │   └── services/  # Chamadas à API
-│   └── Dockerfile
-├── docs/              # Documentação técnica
-│   ├── architecture.md
-│   ├── edugame-spec.md
-│   └── how-to-run.md
-├── examples/          # Exemplos de módulos .edugame
-│   └── quiz-basico/
-└── docker-compose.yml
-```
+## Documentação
 
-## 📚 Documentação
-
-| Documento | Descrição |
-|-----------|-----------|
-| [Arquitetura](docs/architecture.md) | Visão geral do sistema |
-| [Como Rodar](docs/how-to-run.md) | Instruções de instalação |
-| [Spec .edugame](docs/edugame-spec.md) | Padrão de módulos de jogo |
-
-## 🗺️ Roadmap (pós-MVP)
-
-- [ ] WebSocket para salas em tempo real
-- [ ] Painel do professor com acompanhamento ao vivo
-- [ ] Autenticação JWT para admin/professor
-- [ ] Importação de alunos via PDF (Secretaria de Itajaí)
-- [ ] Banco de dados SQLite persistente
-- [ ] Motor de jogos: arrastar e soltar, desafio de contas
-- [ ] Sincronização remota de jogos publicados
-
----
-
-<p align="center">
-  Desenvolvido com 💜 por <strong>Ederson Gonçalves da Silva</strong><br>
-  para as escolas municipais de Itajaí e região 🌟
-</p>
+- [`docs/how-to-run.md`](docs/how-to-run.md) — passo a passo local com Docker e smoke test
+- [`docs/architecture.md`](docs/architecture.md) — visão geral da arquitetura atual
+- [`docs/edugame-spec.md`](docs/edugame-spec.md) — formato dos pacotes `.edugame`
+- [`frontend/README.md`](frontend/README.md) — frontend React/Vite do EduLab Games
+- [`backend/README.md`](backend/README.md) — backend FastAPI do EduLab Games

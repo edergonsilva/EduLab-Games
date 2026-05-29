@@ -1,13 +1,14 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   getGames, getSubjects, getGrades,
-  type Game, type Subject, type Grade
+  type Game, type Subject, type Grade,
 } from '../services/api'
 import './Games.css'
 
 const MODE_LABEL: Record<string, string> = {
-  solo:        '🎯 Solo',
+  solo: '🎯 Solo',
   duelo_local: '⚔️ Duelo Local',
   sala_codigo: '🌐 Sala por Código',
 }
@@ -15,6 +16,7 @@ const MODE_LABEL: Record<string, string> = {
 export default function Games() {
   const { grade, subject } = useParams<{ grade: string; subject: string }>()
   const navigate = useNavigate()
+  const [brokenThumbs, setBrokenThumbs] = useState<Record<string, boolean>>({})
 
   const { data: games, isLoading } = useQuery<Game[]>({
     queryKey: ['games', grade, subject],
@@ -31,7 +33,7 @@ export default function Games() {
     queryFn: getGrades,
   })
 
-  const gradeInfo   = grades?.find(g => g.id === Number(grade))
+  const gradeInfo = grades?.find(g => g.id === Number(grade))
   const subjectInfo = subjects?.find(s => s.id === subject)
 
   return (
@@ -68,44 +70,64 @@ export default function Games() {
 
       {games && games.length > 0 && (
         <div className="games-grid">
-          {games.map(game => (
-            <div key={game.id} className="game-card card card-hover">
-              <div className="game-thumb">
-                {game.thumbnail
-                  ? <img src={game.thumbnail} alt={game.name} />
-                  : <span className="game-thumb-placeholder">🎮</span>
-                }
-              </div>
-              <div className="game-body">
-                <h3 className="game-name">{game.name}</h3>
-                <p className="game-description">{game.description}</p>
-                <div className="game-modes">
-                  {game.mode.map(m => (
-                    <span key={m} className="badge badge-purple">{MODE_LABEL[m] ?? m}</span>
-                  ))}
-                </div>
-                <div className="game-meta">
-                  <span className="game-meta-item">⏱ {game.estimated_duration_minutes} min</span>
-                  <span className="game-meta-item">👥 {game.min_players}–{game.max_players} jogador(es)</span>
-                </div>
-                <div className="game-footer">
-                  <small className="game-credits">Por {game.developer}</small>
-                  {game.session_required ? (
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => navigate('/entrar-sala')}
-                    >
-                      Entrar na Sala
-                    </button>
+          {games.map(game => {
+            const gameCardKey = `${game.source}-${game.id}-${game.version}`
+            const supportsRoomMode = game.mode.includes('sala_codigo')
+            const supportsDirectPlay = game.mode.some(mode => mode !== 'sala_codigo')
+            const showImage = game.thumbnail && !brokenThumbs[gameCardKey]
+
+            return (
+              <div key={gameCardKey} className="game-card card card-hover">
+                <div className="game-thumb">
+                  {showImage ? (
+                    <img
+                      src={game.thumbnail ?? undefined}
+                      alt={game.name}
+                      onError={() => setBrokenThumbs(current => ({ ...current, [gameCardKey]: true }))}
+                    />
                   ) : (
-                    <button className="btn btn-secondary btn-sm">
-                      Jogar Agora ▶
-                    </button>
+                    <span className="game-thumb-placeholder">🎮</span>
                   )}
                 </div>
+                <div className="game-body">
+                  <div className="game-header">
+                    <h3 className="game-name">{game.name}</h3>
+                    <span className={`badge ${game.source === 'imported' ? 'badge-yellow' : 'badge-purple'}`}>
+                      {game.source === 'imported' ? 'Importado' : 'Base'}
+                    </span>
+                  </div>
+                  <p className="game-description">{game.description}</p>
+                  <div className="game-modes">
+                    {game.mode.map(m => (
+                      <span key={m} className="badge badge-purple">{MODE_LABEL[m] ?? m}</span>
+                    ))}
+                  </div>
+                  <div className="game-meta">
+                    <span className="game-meta-item">⏱ {game.estimated_duration_minutes} min</span>
+                    <span className="game-meta-item">👥 {game.min_players}–{game.max_players} jogador(es)</span>
+                  </div>
+                  <div className="game-footer">
+                    <small className="game-credits">Por {game.developer}</small>
+                    <div className="game-actions">
+                      {supportsDirectPlay && (
+                        <button className="btn btn-secondary btn-sm">
+                          Jogar Agora ▶
+                        </button>
+                      )}
+                      {supportsRoomMode && (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => navigate('/entrar-sala')}
+                        >
+                          {game.session_required && !supportsDirectPlay ? 'Entrar na Sala' : 'Usar código de sala'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

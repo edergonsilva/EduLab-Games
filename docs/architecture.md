@@ -1,119 +1,81 @@
 # Arquitetura — EduLab Games
 
-## Visão Geral
+## Visão geral
 
-O **EduLab Games** é uma plataforma *local-first* de jogos educativos para laboratórios
-de informática escolares. A arquitetura é dividida em dois componentes principais que se
-comunicam via HTTP/REST.
+O EduLab Games é uma plataforma local-first composta por:
 
-```
-┌─────────────────────────────────────────────────┐
-│                  Rede Local (Escola)             │
-│                                                  │
-│  ┌──────────────┐       ┌──────────────────┐    │
-│  │   Frontend   │◄─────►│    Backend       │    │
-│  │  React/Vite  │  API  │  Python/FastAPI  │    │
-│  │  porta 3000  │       │  porta 8000      │    │
-│  └──────────────┘       └──────┬───────────┘    │
-│                                │                 │
-│                         ┌──────▼──────┐          │
-│                         │  Dados      │          │
-│                         │  JSON/SQLite│          │
-│                         └─────────────┘          │
-└─────────────────────────────────────────────────┘
-         ▲                       ▲
-         │                       │
-    Navegador               Administrador
-    dos alunos              (via painel web)
+- **backend FastAPI** para catálogo, importação, salas e painel admin
+- **frontend React/Vite** para os fluxos web
+- **SQLite + armazenamento em disco** para persistência mínima do MVP local
+
+```text
+Frontend (porta 3000/5173)
+        ↓ HTTP
+Backend FastAPI (porta 8000)
+        ├── SQLite (jogos importados e salas)
+        └── storage local (pacotes .edugame e assets extraídos)
 ```
 
-## Componentes
+## Backend
 
-### Backend (`backend/`)
-- **Linguagem:** Python 3.11+
-- **Framework:** FastAPI
-- **Armazenamento MVP:** Arquivos JSON estáticos + memória (salas/sessões)
-- **Armazenamento futuro:** SQLite → PostgreSQL conforme escala
+### Rotas principais
 
-**Rotas principais:**
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| GET | `/health` | Health check |
-| GET | `/` | Metadados da plataforma |
-| GET | `/api/catalog/grades` | Anos escolares |
-| GET | `/api/catalog/subjects` | Disciplinas |
-| GET | `/api/games` | Catálogo de jogos |
-| GET | `/api/games/{id}` | Detalhes de um jogo |
-| POST | `/api/rooms` | Criar sala |
-| GET | `/api/rooms/{code}` | Obter sala |
-| POST | `/api/rooms/{code}/join` | Entrar na sala |
-| POST | `/api/rooms/{code}/start` | Iniciar partida |
-| POST | `/api/admin/login` | Login do administrador |
-| POST | `/api/import/edugame` | Importar módulo .edugame |
-| GET | `/api/import/edugame/spec` | Especificação .edugame |
+| GET | `/health` | health check |
+| GET | `/api/catalog/grades` | anos escolares |
+| GET | `/api/catalog/subjects` | disciplinas |
+| GET | `/api/games` | catálogo combinado (seed + importados publicados) |
+| GET | `/api/games/{id}` | detalhes de um jogo |
+| POST | `/api/import/edugame` | valida e importa pacote `.edugame` |
+| GET | `/api/import/edugame/spec` | resumo da spec `.edugame` |
+| GET | `/api/admin/games` | listagem administrativa de jogos |
+| PATCH | `/api/admin/games/{game_id}/{version}` | altera status de jogo importado |
+| POST | `/api/rooms` | cria sala persistida |
+| GET | `/api/rooms` | lista salas persistidas |
+| GET | `/api/rooms/{code}` | consulta sala |
+| POST | `/api/rooms/{code}/join` | entra em sala |
 
-### Frontend (`frontend/`)
-- **Framework:** React 19 + TypeScript
-- **Build:** Vite
-- **Roteamento:** React Router v7
-- **Requisições:** TanStack Query + Axios
-- **Estilo:** CSS puro com variáveis de tema (sem framework externo)
+### Persistência do MVP
 
-**Rotas do frontend:**
+- **JSON estático** para anos, disciplinas e jogos seed/base
+- **SQLite** para jogos importados e salas
+- **filesystem local** para pacotes `.edugame` e thumbnails/assets extraídos
+
+Local padrão sem Docker:
+- `backend/data_storage/edulab.sqlite3`
+- `backend/data_storage/packages/`
+- `backend/data_storage/static/imported/`
+
+### Catálogo de jogos
+
+O backend combina:
+
+1. jogos seed/base de `backend/app/data/games.json`
+2. jogos importados persistidos no SQLite
+
+Filtros mantidos:
+- disciplina
+- ano
+- modo
+- status
+
+## Frontend
+
+Rotas principais:
+
 | Rota | Tela |
 |------|------|
-| `/` | Tela inicial — escolha do ano escolar |
-| `/disciplinas/:grade` | Escolha de disciplina |
-| `/jogos/:grade/:subject` | Catálogo de jogos |
-| `/entrar-sala` | Entrar por código de sala |
-| `/professor` | Painel do professor |
-| `/admin` | Painel administrativo |
-| `/sobre` | Sobre / Créditos |
+| `/` | seleção de ano |
+| `/disciplinas/:grade` | seleção de disciplina |
+| `/jogos/:grade/:subject` | catálogo |
+| `/entrar-sala` | entrada por código |
+| `/professor` | criação/listagem de salas |
+| `/admin` | login, upload e publicação básica |
 
-## Perfis de Usuário
+## Limites atuais do bootstrap
 
-| Perfil | Autenticação | Acesso |
-|--------|-------------|--------|
-| Aluno | Nenhuma | Jogo solo, duelo local, sala por código |
-| Professor | Nenhuma (MVP) | Criar sala, acompanhar partidas |
-| Administrador | Senha única local | Importar/publicar jogos, gerenciar turmas |
-
-## Fluxo Principal — Aluno
-
-```
-Tela Inicial
-    │
-    ▼
-Escolha do Ano (1º–9º)
-    │
-    ▼
-Escolha da Disciplina
-    │
-    ▼
-Catálogo de Jogos
-    │
-    ├─► Jogo Solo / Duelo Local → iniciar diretamente
-    └─► Sala por Código → entrar com código → aguardar professor
-```
-
-## Infraestrutura Local
-
-O sistema é desenhado para rodar em um único computador/servidor do laboratório.
-Os alunos acessam via navegador na rede local (sem necessidade de internet).
-
-```
-Servidor da Escola
-├── Docker Compose
-│   ├── edulab-backend  (porta 8000)
-│   └── edulab-frontend (porta 3000)
-└── Volume persistente (edulab-data)
-```
-
-## Planos Futuros
-
-- WebSocket para salas em tempo real
-- Autenticação JWT para admin/professor
-- SQLite persistente com migrações
-- Sincronização remota de jogos publicados
-- Painel de analytics pedagógico
-- Importação de alunos via PDF
+- sem WebSocket em tempo real
+- sem parser completo de PDF
+- autenticação admin ainda é senha simples sem sessão persistente
+- execução real do jogo HTML5 ainda está fora do escopo desta etapa

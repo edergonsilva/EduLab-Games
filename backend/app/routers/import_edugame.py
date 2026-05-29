@@ -10,16 +10,16 @@ Um pacote .edugame é um arquivo ZIP renomeado com a seguinte estrutura:
     ├── preview/
     │   └── cover.png        (opcional — thumbnail do jogo)
     └── README.md            (opcional — documentação do módulo)
-
-PLACEHOLDER: esta implementação é apenas um esqueleto. A lógica completa de
-validação, armazenamento e publicação será implementada em versão futura.
 """
 
+import io
 import json
 import zipfile
-import io
-from fastapi import APIRouter, HTTPException, UploadFile, File
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+
 from app.models.game import GameManifest
+from app.services.storage import save_imported_game
 
 router = APIRouter()
 
@@ -33,8 +33,8 @@ REQUIRED_MANIFEST_FIELDS = {
 @router.post("/edugame")
 async def import_edugame(file: UploadFile = File(...)):
     """
-    Importa um pacote de jogo no formato .edugame (ZIP).
-    Valida o manifesto e registra o jogo com status 'test'.
+    Importa um pacote de jogo no formato .edugame (ZIP), valida o manifesto,
+    salva os arquivos localmente e persiste o jogo com status 'test'.
     """
     if not file.filename or not file.filename.endswith(".edugame"):
         raise HTTPException(status_code=400, detail="O arquivo deve ter extensão .edugame")
@@ -42,8 +42,8 @@ async def import_edugame(file: UploadFile = File(...)):
     content = await file.read()
     try:
         zf = zipfile.ZipFile(io.BytesIO(content))
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="Arquivo .edugame inválido ou corrompido.")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="Arquivo .edugame inválido ou corrompido.") from exc
 
     names = set(zf.namelist())
 
@@ -51,32 +51,42 @@ async def import_edugame(file: UploadFile = File(...)):
     if missing:
         raise HTTPException(
             status_code=422,
-            detail=f"Arquivos obrigatórios ausentes no pacote: {', '.join(missing)}",
+            detail=f"Arquivos obrigatórios ausentes no pacote: {', '.join(sorted(missing))}",
         )
 
     try:
         manifest_raw = json.loads(zf.read("manifest.json"))
-    except Exception:
-        raise HTTPException(status_code=422, detail="manifest.json inválido ou não é JSON válido.")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="manifest.json inválido ou não é JSON válido.") from exc
 
     missing_fields = REQUIRED_MANIFEST_FIELDS - set(manifest_raw.keys())
     if missing_fields:
         raise HTTPException(
             status_code=422,
-            detail=f"Campos obrigatórios ausentes no manifest.json: {', '.join(missing_fields)}",
+            detail=f"Campos obrigatórios ausentes no manifest.json: {', '.join(sorted(missing_fields))}",
         )
 
     try:
         manifest = GameManifest(**manifest_raw)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"manifest.json com dados inválidos: {exc}")
+        raise HTTPException(status_code=422, detail=f"manifest.json com dados inválidos: {exc}") from exc
 
-    # TODO: salvar o jogo no banco de dados e extrair os assets para o diretório correto
-    manifest.status = "test"
+    if manifest.entry_point not in names:
+        raise HTTPException(status_code=422, detail="O arquivo informado em entry_point não existe dentro do pacote.")
+
+    try:
+        manifest, created = save_imported_game(manifest, content, zf)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return {
         "ok": True,
-        "message": f"Jogo '{manifest.name}' importado com sucesso. Status: test.",
+        "created": created,
+        "message": (
+            f"Jogo '{manifest.name}' importado com sucesso em modo test."
+            if created
+            else f"Jogo '{manifest.name}' atualizado com sucesso em modo test."
+        ),
         "manifest": manifest,
     }
 
@@ -101,12 +111,12 @@ async def edugame_spec():
             "mode":                       "array<string> — solo | duelo_local | sala_codigo",
             "min_players":                "int — mínimo de jogadores",
             "max_players":                "int — máximo de jogadores",
-            "session_required":           "bool — exige código de sala",
+            "session_required":           "bool — obrigatório apenas quando o jogo funciona somente via sala_codigo",
             "supports_teacher_panel":     "bool — suporta painel do professor",
             "supports_ranking":           "bool — suporta ranking",
             "estimated_duration_minutes": "int — duração estimada em minutos",
             "entry_point":                "string — arquivo HTML de entrada (ex: index.html)",
-            "thumbnail":                  "string — caminho da imagem de capa dentro do pacote",
+            "thumbnail":                  "string — caminho opcional da imagem de capa dentro do pacote",
             "description":                "string — descrição curta do jogo",
             "status":                     "string — draft | test | published | archived",
             "api_version":                "string — versão da API da plataforma (ex: 1.0)",

@@ -1,12 +1,8 @@
-# EduLab Games — Backend
+# Backend do EduLab Games
 
-Este é o backend da plataforma **EduLab Games**, construído com **Python + FastAPI**.
+API FastAPI responsável por catálogo, importação `.edugame`, salas e painel admin.
 
-## Requisitos
-- Python 3.11+
-- pip
-
-## Instalação local
+## Rodando localmente
 
 ```bash
 cd backend
@@ -16,31 +12,24 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-A API estará disponível em `http://localhost:8000`.  
-Documentação interativa: `http://localhost:8000/docs`
+## Persistência local
 
-## Variáveis de ambiente (`.env`)
+- banco SQLite: `data_storage/edulab.sqlite3`
+- pacotes importados: `data_storage/packages/`
+- assets/thumbnails extraídos: `data_storage/static/imported/`
 
-Crie um arquivo `.env` na pasta `backend/` com:
+## Rotas mais úteis
 
-```env
-ADMIN_PASSWORD=troque-aqui
-```
+- `GET /health`
+- `GET /api/games`
+- `GET /api/admin/games`
+- `POST /api/import/edugame`
+- `PATCH /api/admin/games/{game_id}/{version}`
+- `POST /api/rooms`
+- `GET /api/rooms`
 
-## Estrutura
+## Observações do MVP
 
-```
-app/
-├── main.py          # Entrypoint FastAPI
-├── config.py        # Configurações e variáveis de ambiente
-├── routers/         # Rotas da API
-│   ├── health.py
-│   ├── catalog.py
-│   ├── games.py
-│   ├── rooms.py
-│   ├── admin.py
-│   └── import_edugame.py
-├── models/          # Schemas Pydantic
-├── services/        # Lógica de negócio
-└── data/            # Dados estáticos JSON
-```
+- anos, disciplinas e jogos seed continuam em JSON
+- jogos importados e salas agora persistem em SQLite
+- thumbnails importadas são servidas em `/static/imported/...`

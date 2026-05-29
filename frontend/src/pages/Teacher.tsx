@@ -1,37 +1,64 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createRoom } from '../services/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { createRoom, getGames, getRooms, type Game, type Room } from '../services/api'
 import './Teacher.css'
+
+const STATUS_LABEL: Record<string, string> = {
+  waiting: 'Aguardando',
+  active: 'Em andamento',
+  finished: 'Encerrada',
+}
 
 export default function Teacher() {
   const navigate = useNavigate()
-  const [gameId, setGameId]   = useState('quiz_multipla_escolha')
+  const queryClient = useQueryClient()
+  const [gameId, setGameId] = useState('')
   const [roomCode, setRoomCode] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [error, setError] = useState('')
 
-  const handleCreate = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const room = await createRoom(gameId)
+  const { data: roomGames = [], isLoading: gamesLoading } = useQuery<Game[]>({
+    queryKey: ['room-games'],
+    queryFn: () => getGames({ mode: 'sala_codigo' }),
+  })
+
+  const { data: rooms = [], isLoading: roomsLoading } = useQuery<Room[]>({
+    queryKey: ['rooms'],
+    queryFn: getRooms,
+  })
+
+  const effectiveGameId = roomGames.some(game => game.id === gameId)
+    ? gameId
+    : (roomGames[0]?.id ?? '')
+
+  const createRoomMutation = useMutation({
+    mutationFn: createRoom,
+    onSuccess: room => {
       setRoomCode(room.code)
-    } catch {
-      setError('Não foi possível criar a sala. Verifique a conexão com o servidor.')
-    } finally {
-      setLoading(false)
+      setError('')
+      void queryClient.invalidateQueries({ queryKey: ['rooms'] })
+    },
+    onError: () => {
+      setError('Não foi possível criar a sala. Escolha um jogo com modo sala por código e tente novamente.')
+    },
+  })
+
+  const handleCreate = () => {
+    if (!effectiveGameId) {
+      setError('Nenhum jogo publicado com sala por código está disponível no momento.')
+      return
     }
+    createRoomMutation.mutate(effectiveGameId)
   }
 
   return (
     <div className="page teacher-page">
       <h2 className="page-title">👨‍🏫 Painel do Professor</h2>
       <p className="page-subtitle">
-        Crie uma sala, projete o código e acompanhe os alunos em tempo real.
+        Crie uma sala, projete o código e acompanhe as salas persistidas localmente.
       </p>
 
       <div className="teacher-grid">
-        {/* Create room panel */}
         <div className="card teacher-card">
           <h3 className="card-heading">🚀 Criar Nova Sala</h3>
           <div className="form-group">
@@ -39,21 +66,25 @@ export default function Teacher() {
             <select
               id="game-select"
               className="input"
-              value={gameId}
+              value={effectiveGameId}
               onChange={e => setGameId(e.target.value)}
+              disabled={gamesLoading || roomGames.length === 0}
             >
-              <option value="quiz_multipla_escolha">Quiz de Múltipla Escolha</option>
-              <option value="arrastar_soltar">Arrastar e Soltar</option>
-              <option value="desafio_contas">Desafio de Contas</option>
+              {roomGames.length === 0 && <option value="">Nenhum jogo publicado com sala por código</option>}
+              {roomGames.map(game => (
+                <option key={`${game.source}-${game.id}-${game.version}`} value={game.id}>
+                  {game.name} ({game.version})
+                </option>
+              ))}
             </select>
           </div>
           {error && <p className="teacher-error">{error}</p>}
           <button
             className="btn btn-primary btn-lg"
             onClick={handleCreate}
-            disabled={loading}
+            disabled={createRoomMutation.isPending || roomGames.length === 0}
           >
-            {loading ? '⏳ Criando...' : '▶ Criar Sala'}
+            {createRoomMutation.isPending ? '⏳ Criando...' : '▶ Criar Sala'}
           </button>
 
           {roomCode && (
@@ -65,35 +96,39 @@ export default function Teacher() {
           )}
         </div>
 
-        {/* Live dashboard placeholder */}
         <div className="card teacher-card">
-          <h3 className="card-heading">📊 Acompanhamento em Tempo Real</h3>
-          <div className="placeholder-area">
-            <span className="placeholder-icon">🔴</span>
-            <p><strong>PLACEHOLDER</strong></p>
-            <p>
-              O painel ao vivo com lista de alunos conectados, progresso,
-              pontuação e ranking em tempo real será implementado via WebSocket
-              em versão futura.
-            </p>
-          </div>
+          <h3 className="card-heading">🗂️ Salas Recentes</h3>
+          {roomsLoading ? (
+            <div className="placeholder-area">⏳ Carregando salas...</div>
+          ) : rooms.length === 0 ? (
+            <div className="placeholder-area">Nenhuma sala criada ainda.</div>
+          ) : (
+            <div className="room-list">
+              {rooms.map(room => (
+                <div key={room.code} className="room-list-item">
+                  <div>
+                    <strong>Sala {room.code}</strong>
+                    <div className="room-list-meta">Jogo: {room.game_id}</div>
+                  </div>
+                  <div className="room-list-side">
+                    <span className="badge badge-purple">{STATUS_LABEL[room.status] ?? room.status}</span>
+                    <small>{room.players.length} jogador(es)</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* PDF import placeholder */}
         <div className="card teacher-card">
           <h3 className="card-heading">📄 Importar Lista de Alunos (PDF)</h3>
           <div className="placeholder-area">
             <span className="placeholder-icon">🔶</span>
-            <p><strong>PLACEHOLDER</strong></p>
             <p>
-              Importação da lista de alunos via PDF (modelo Secretaria de Itajaí)
-              será habilitada em versão futura. O serviço de backend já está
-              preparado em <code>services/pdf_import_service.py</code>.
+              A importação de PDF continua planejada para a próxima etapa, mas as salas e jogos já podem ser testados
+              localmente com backend persistente.
             </p>
           </div>
-          <label className="btn btn-outline btn-sm" style={{ cursor: 'not-allowed', opacity: 0.5 }}>
-            📤 Selecionar PDF (em breve)
-          </label>
         </div>
       </div>
 

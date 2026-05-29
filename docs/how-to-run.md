@@ -1,60 +1,83 @@
-# Como Rodar Localmente
+# Como rodar e testar localmente
 
 ## Pré-requisitos
 
-- [Docker](https://docs.docker.com/get-docker/) + [Docker Compose](https://docs.docker.com/compose/)
-- Linux Mint (ou qualquer distribuição Linux / macOS / Windows com WSL2)
+- Docker + Docker Compose
+- Linux Mint (alvo principal do MVP local)
+- opcional para desenvolvimento sem Docker: Python 3.11+ e Node 20+
 
-## 1. Clonar o repositório
+## 1. Configurar a senha do admin
 
-```bash
-git clone https://github.com/edergonsilva/EduLab-Games.git
-cd EduLab-Games
-```
-
-## 2. Configurar variáveis de ambiente (opcional)
-
-Crie um arquivo `.env` na raiz do projeto para personalizar a senha do admin:
+Na raiz do projeto, crie um arquivo `.env` com pelo menos:
 
 ```bash
 echo "ADMIN_PASSWORD=minha-senha-segura" > .env
 ```
 
-Se não criar, a senha padrão é `edulab@admin`.  
-**Troque a senha antes de usar em ambiente de produção!**
+Se não criar o arquivo, a senha padrão será `edulab@admin`.
 
-## 3. Subir os serviços
+## 2. Subir os containers
 
 ```bash
 docker compose up --build
 ```
 
-Após o build, a plataforma estará disponível em:
+URLs principais:
 
 | Serviço | URL |
 |---------|-----|
-| 🌐 Frontend (alunos/professores) | http://localhost:3000 |
-| 🔧 Backend (API) | http://localhost:8000 |
-| 📖 Documentação da API | http://localhost:8000/docs |
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:8000 |
+| Swagger | http://localhost:8000/docs |
+| Health | http://localhost:8000/health |
 
-## 4. Parar os serviços
+## 3. Onde ficam os dados persistidos
 
-```bash
-docker compose down
-```
+### Sem Docker
+- SQLite: `backend/data_storage/edulab.sqlite3`
+- pacotes `.edugame`: `backend/data_storage/packages/`
+- assets e thumbnails importados: `backend/data_storage/static/imported/`
 
----
+### Com Docker
+Tudo fica no volume `edulab-data`, montado em `/app/data_storage` no container do backend.
 
-## Modo de desenvolvimento local (sem Docker)
+## 4. Smoke test manual sugerido
+
+1. **Subir containers**
+   - `docker compose up --build`
+2. **Validar health**
+   - abrir `http://localhost:8000/health`
+3. **Abrir frontend**
+   - abrir `http://localhost:3000`
+4. **Criar sala**
+   - ir em `Professor`
+   - escolher um jogo com `sala_codigo`
+   - criar a sala e anotar o código
+5. **Entrar em sala**
+   - abrir `Entrar na Sala`
+   - informar o código criado
+6. **Logar no admin**
+   - abrir `Admin`
+   - usar a senha configurada
+7. **Importar `.edugame`**
+   - enviar um pacote válido
+   - confirmar feedback de sucesso
+   - verificar que o jogo aparece com status `test`
+8. **Publicar o jogo importado** (opcional, mas recomendado)
+   - clicar em `Publicar` no painel admin
+   - voltar ao catálogo e confirmar se o jogo aparece para os alunos
+9. **Reiniciar o backend**
+   - parar/subir novamente os serviços
+   - confirmar que jogos importados e salas ainda aparecem
+
+## 5. Desenvolvimento sem Docker
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate       # Linux/macOS
-# .venv\Scripts\activate        # Windows
-
+source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -67,40 +90,29 @@ npm install
 npm run dev
 ```
 
-O frontend em desenvolvimento (porta 5173) já está configurado para fazer proxy
-das chamadas `/api` e `/health` para `http://localhost:8000`.
+O Vite faz proxy de `/api` e `/health` para `http://localhost:8000`.
 
----
+## 6. Rotas úteis para teste manual
 
-## Rede local (laboratório escolar)
+- `GET /health`
+- `GET /api/games`
+- `GET /api/admin/games`
+- `POST /api/import/edugame`
+- `PATCH /api/admin/games/{game_id}/{version}`
+- `POST /api/rooms`
+- `GET /api/rooms`
+- `GET /api/rooms/{code}`
 
-Para que os alunos acessem a plataforma de outros computadores do laboratório,
-descubra o IP do servidor:
+## 7. Rede local
+
+Depois de subir o sistema no computador servidor, descubra o IP local:
 
 ```bash
 ip addr show | grep 'inet '
 ```
 
-Então acesse de qualquer computador da rede:
-```
+Os demais computadores do laboratório podem acessar:
+
+```text
 http://IP-DO-SERVIDOR:3000
-```
-
----
-
-## Problemas comuns
-
-### `connection refused` no frontend
-Verifique se o container do backend está rodando:
-```bash
-docker compose ps
-docker compose logs backend
-```
-
-### Porta 3000 ou 8000 já em uso
-Edite o `docker-compose.yml` e mude as portas mapeadas:
-```yaml
-ports:
-  - "3001:80"   # frontend
-  - "8001:8000" # backend
 ```
