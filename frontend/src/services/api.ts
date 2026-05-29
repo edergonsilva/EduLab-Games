@@ -24,6 +24,8 @@ export interface Game {
   name: string
   description?: string
   thumbnail?: string | null
+  entry_point?: string | null
+  play_url?: string | null
   mode: string[]
   min_players: number
   max_players: number
@@ -43,11 +45,18 @@ export interface Game {
 }
 
 export interface Room {
+  id: string
   code: string
-  game_id: string
+  name: string
+  grade?: number | null
+  subject?: string | null
+  selected_game_id?: string | null
   status: string
   players: string[]
   created_at: number
+  updated_at: number
+  started_at?: number | null
+  finished_at?: number | null
 }
 
 export interface HealthResponse {
@@ -95,8 +104,15 @@ export const uploadEdugame = (file: File) => {
   return api.post<ImportEdugameResponse>('/import/edugame', formData).then(r => r.data)
 }
 
-export const createRoom = (game_id: string) =>
-  api.post<Room>('/rooms', { game_id }).then(r => r.data)
+export interface CreateRoomPayload {
+  name: string
+  grade?: number
+  subject?: string
+  game_id?: string
+}
+
+export const createRoom = (payload: CreateRoomPayload) =>
+  api.post<Room>('/rooms', payload).then(r => r.data)
 
 export const getRoom = (code: string) =>
   api.get<Room>(`/rooms/${code}`).then(r => r.data)
@@ -105,7 +121,23 @@ export const getRooms = () =>
   api.get<Room[]>('/rooms').then(r => r.data)
 
 export const joinRoom = (code: string, player_name: string) =>
-  api.post<Room>(`/rooms/${code}/join`, { code, player_name }).then(r => r.data)
+  api.post<Room>(`/rooms/${code}/join`, { player_name }).then(r => r.data)
+
+export interface UpdateRoomPayload {
+  name?: string
+  grade?: number
+  subject?: string
+  game_id?: string
+}
+
+export const updateRoom = (code: string, payload: UpdateRoomPayload) =>
+  api.patch<Room>(`/rooms/${code}`, payload).then(r => r.data)
+
+export const startRoom = (code: string, game_id?: string) =>
+  api.post<Room>(`/rooms/${code}/start`, game_id ? { game_id } : {}).then(r => r.data)
+
+export const finishRoom = (code: string) =>
+  api.post<Room>(`/rooms/${code}/finish`, {}).then(r => r.data)
 
 export const adminLogin = (password: string) =>
   api.post('/admin/login', { password }).then(r => r.data)

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Desafio de Contas — EduLab Games</title>
+  <style>
+    :root {
+      --purple: #5B21B6; --yellow: #FFD700; --bg: #F5F3FF;
+      --correct: #22C55E; --wrong: #EF4444;
+      --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font); background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1.5rem;
+    }
+    .game-box {
+      background: #fff; border-radius: 1.25rem;
+      box-shadow: 0 6px 30px rgba(91,33,182,.15);
+      padding: 2rem; max-width: 480px; width: 100%; text-align: center;
+    }
+    h1 { font-size: 1.4rem; font-weight: 800; color: var(--purple); margin-bottom: 0.35rem; }
+    .subtitle { color: #6B7280; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .hud { display: flex; justify-content: space-between; margin-bottom: 1.25rem; }
+    .hud-item { display: flex; flex-direction: column; align-items: center; }
+    .hud-label { font-size: 0.72rem; font-weight: 700; color: #9CA3AF; text-transform: uppercase; }
+    .hud-value { font-size: 1.4rem; font-weight: 900; color: var(--purple); }
+    .timer-bar { height: 8px; background: #EDE9FE; border-radius: 4px; margin-bottom: 1.5rem; overflow: hidden; }
+    .timer-fill { height: 100%; background: var(--purple); border-radius: 4px; transition: width 0.9s linear; }
+    .problem { font-size: 3rem; font-weight: 900; color: #1E1B4B; margin-bottom: 1.5rem; letter-spacing: .02em; }
+    .input-row { display: flex; gap: 0.75rem; justify-content: center; margin-bottom: 1rem; }
+    .answer-input {
+      font-size: 1.75rem; font-weight: 800; font-family: var(--font);
+      border: 2.5px solid #DDD6FE; border-radius: 0.75rem;
+      padding: 0.5rem 1rem; width: 140px; text-align: center;
+      color: #1E1B4B; outline: none; transition: border-color 0.2s;
+    }
+    .answer-input:focus { border-color: var(--purple); }
+    .answer-input.correct { border-color: var(--correct); background: #DCFCE7; }
+    .answer-input.wrong   { border-color: var(--wrong);   background: #FEF2F2; }
+    .submit-btn {
+      background: var(--purple); color: #fff; border: none; border-radius: 0.75rem;
+      padding: 0.5rem 1.25rem; font-size: 1.5rem; font-weight: 800; font-family: var(--font);
+      cursor: pointer; transition: filter 0.2s;
+    }
+    .submit-btn:hover { filter: brightness(1.1); }
+    .submit-btn:disabled { background: #C4B5FD; cursor: default; }
+    .feedback { font-size: 1.05rem; font-weight: 700; min-height: 1.6rem; margin-bottom: 0.5rem; }
+    .feedback.correct { color: #166534; }
+    .feedback.wrong   { color: #991B1B; }
+    .result-area { margin-top: 0.5rem; }
+    .result-emoji { font-size: 4rem; margin-bottom: 0.5rem; }
+    .result-title { font-size: 1.6rem; font-weight: 900; color: var(--purple); margin-bottom: 0.5rem; }
+    .result-detail { font-size: 1rem; color: #6B7280; margin-bottom: 1.5rem; }
+    .restart-btn {
+      background: var(--yellow); color: #3B0F8C; border: none; border-radius: 0.75rem;
+      padding: 0.85rem 2rem; font-size: 1rem; font-weight: 800; font-family: var(--font); cursor: pointer;
+    }
+    .credits { margin-top: 1.5rem; font-size: 0.78rem; color: #9CA3AF; }
+  </style>
+</head>
+<body>
+<div class="game-box">
+  <h1>🔢 Desafio de Contas</h1>
+  <p class="subtitle">Resolva as operações o mais rápido possível!</p>
+  <div class="hud">
+    <div class="hud-item"><span class="hud-label">Pontos</span><span class="hud-value" id="score">0</span></div>
+    <div class="hud-item"><span class="hud-label">Questão</span><span class="hud-value" id="q-num">1/10</span></div>
+    <div class="hud-item"><span class="hud-label">Acertos</span><span class="hud-value" id="hits">0</span></div>
+  </div>
+  <div class="timer-bar"><div class="timer-fill" id="timer-fill" style="width:100%"></div></div>
+  <div class="problem" id="problem">? + ? = ?</div>
+  <div class="input-row">
+    <input class="answer-input" id="answer-input" type="number" placeholder="?" autocomplete="off" />
+    <button class="submit-btn" id="submit-btn" onclick="submit()">→</button>
+  </div>
+  <div class="feedback" id="feedback"></div>
+  <div id="result-area"></div>
+  <div class="credits">EduLab Games — Matemática Rápida</div>
+</div>
+<script>
+  const GAME_ID = 'desafio_contas'
+  const TOTAL = 10
+  const TIME_PER_Q = 12
+
+  let current = 0, score = 0, hits = 0, answer = 0, timerInterval = null, timeLeft = TIME_PER_Q, done = false
+
+  function emit(type, data) {
+    // '*' is required: the iframe runs in a sandboxed context without allow-same-origin,
+    // so its origin is opaque and window.location.origin cannot be used as target.
+    // The parent (GamePlayer) validates events by type rather than trusting origin alone.
+    window.parent.postMessage({ type, gameId: GAME_ID, ...data }, '*')
+  }
+
+  function genQuestion() {
+    const ops = ['+', '-', '×']
+    const op = ops[Math.floor(Math.random() * ops.length)]
+    let a, b
+    if (op === '+') { a = randInt(1, 50); b = randInt(1, 50); answer = a + b }
+    else if (op === '-') { a = randInt(10, 99); b = randInt(1, a); answer = a - b }
+    else { a = randInt(2, 12); b = randInt(2, 12); answer = a * b }
+    document.getElementById('problem').textContent = `${a} ${op} ${b} = ?`
+  }
+
+  function startTimer() {
+    timeLeft = TIME_PER_Q
+    clearInterval(timerInterval)
+    document.getElementById('timer-fill').style.width = '100%'
+    timerInterval = setInterval(() => {
+      timeLeft--
+      const pct = Math.max(0, (timeLeft / TIME_PER_Q) * 100)
+      document.getElementById('timer-fill').style.width = pct + '%'
+      if (pct < 30) document.getElementById('timer-fill').style.background = '#EF4444'
+      else if (pct < 60) document.getElementById('timer-fill').style.background = '#F59E0B'
+      else document.getElementById('timer-fill').style.background = 'var(--purple)'
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval)
+        handleAnswer(null) // time out
+      }
+    }, 1000)
+  }
+
+  function submit() {
+    if (done) return
+    const val = parseInt(document.getElementById('answer-input').value, 10)
+    if (isNaN(val)) return
+    clearInterval(timerInterval)
+    handleAnswer(val)
+  }
+
+  function handleAnswer(val) {
+    const input = document.getElementById('answer-input')
+    const fb = document.getElementById('feedback')
+    const correct = val !== null && val === answer
+    if (correct) {
+      score += Math.max(10, Math.round(timeLeft / TIME_PER_Q * 100))
+      hits++
+      input.classList.add('correct')
+      fb.className = 'feedback correct'
+      fb.textContent = '✅ Correto!'
+    } else {
+      input.classList.add('wrong')
+      fb.className = 'feedback wrong'
+      fb.textContent = val === null ? `⏱ Tempo esgotado! Era: ${answer}` : `❌ Errado! Era: ${answer}`
+    }
+    document.getElementById('score').textContent = score
+    document.getElementById('hits').textContent = hits
+    document.getElementById('submit-btn').disabled = true
+    emit('question_answered', { correct, score, question: current + 1 })
+    emit('score_updated', { score })
+
+    setTimeout(() => {
+      current++
+      if (current >= TOTAL) { showResult(); return }
+      input.value = ''
+      input.className = 'answer-input'
+      fb.textContent = ''
+      document.getElementById('submit-btn').disabled = false
+      document.getElementById('q-num').textContent = `${current + 1}/${TOTAL}`
+      genQuestion()
+      startTimer()
+      input.focus()
+    }, 1200)
+  }
+
+  function showResult() {
+    done = true
+    clearInterval(timerInterval)
+    document.getElementById('timer-fill').style.width = '0%'
+    const pct = Math.round((hits / TOTAL) * 100)
+    const emoji = pct >= 80 ? '🏆' : pct >= 50 ? '😊' : '💪'
+    const msg = pct >= 80 ? 'Ótimo desempenho!' : pct >= 50 ? 'Bom trabalho!' : 'Continue praticando!'
+    document.getElementById('result-area').innerHTML = `
+      <div class="result-area">
+        <div class="result-emoji">${emoji}</div>
+        <div class="result-title">${msg}</div>
+        <div class="result-detail">Acertos: ${hits}/${TOTAL} &nbsp;·&nbsp; Pontos: ${score}</div>
+        <button class="restart-btn" onclick="restart()">🔄 Jogar Novamente</button>
+      </div>`
+    document.getElementById('problem').style.display = 'none'
+    document.getElementById('answer-input').style.display = 'none'
+    document.getElementById('submit-btn').style.display = 'none'
+    document.getElementById('feedback').style.display = 'none'
+    emit('game_finished', { score, hits, total: TOTAL, percentage: pct })
+  }
+
+  function restart() {
+    done = false; current = 0; score = 0; hits = 0
+    document.getElementById('result-area').innerHTML = ''
+    document.getElementById('problem').style.display = ''
+    document.getElementById('answer-input').style.display = ''
+    document.getElementById('submit-btn').style.display = ''
+    document.getElementById('feedback').style.display = ''
+    document.getElementById('submit-btn').disabled = false
+    document.getElementById('answer-input').className = 'answer-input'
+    document.getElementById('answer-input').value = ''
+    document.getElementById('feedback').textContent = ''
+    document.getElementById('q-num').textContent = `1/${TOTAL}`
+    document.getElementById('score').textContent = '0'
+    document.getElementById('hits').textContent = '0'
+    emit('game_started', {})
+    genQuestion()
+    startTimer()
+    document.getElementById('answer-input').focus()
+  }
+
+  function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
+
+  document.getElementById('answer-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submit()
+  })
+
+  emit('game_started', {})
+  genQuestion()
+  startTimer()
+  document.getElementById('answer-input').focus()
+</script>
+</body>
+</html>

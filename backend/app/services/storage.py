@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import zipfile
+from uuid import uuid4
 
 from app.config import settings
 from app.models.game import GameManifest
@@ -17,6 +18,8 @@ STATIC_DIR = settings.storage_dir / "static"
 IMPORTED_STATIC_DIR = STATIC_DIR / "imported"
 PACKAGES_DIR = settings.storage_dir / "packages"
 SEED_GAMES_PATH = settings.data_dir / "games.json"
+SEED_GAMES_SOURCE_DIR = settings.data_dir / "seed_games"
+SEED_GAMES_STATIC_DIR = STATIC_DIR / "games"
 
 
 @contextmanager
@@ -31,10 +34,23 @@ def get_connection():
         connection.close()
 
 
+def _sync_seed_games_to_static() -> None:
+    """Copy/sync seed game HTML files from data dir to the served static dir."""
+    if not SEED_GAMES_SOURCE_DIR.exists():
+        return
+    SEED_GAMES_STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    for game_dir in SEED_GAMES_SOURCE_DIR.iterdir():
+        if game_dir.is_dir():
+            target = SEED_GAMES_STATIC_DIR / game_dir.name
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(game_dir, target, dirs_exist_ok=True)
+
+
 def initialize_storage() -> None:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     IMPORTED_STATIC_DIR.mkdir(parents=True, exist_ok=True)
     PACKAGES_DIR.mkdir(parents=True, exist_ok=True)
+    _sync_seed_games_to_static()
 
     with get_connection() as connection:
         connection.execute(
@@ -56,13 +72,56 @@ def initialize_storage() -> None:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS rooms (
+                id TEXT NOT NULL,
                 code TEXT PRIMARY KEY,
-                game_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                grade INTEGER,
+                subject TEXT,
+                selected_game_id TEXT,
                 status TEXT NOT NULL,
                 players_json TEXT NOT NULL,
-                created_at REAL NOT NULL
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                started_at REAL,
+                finished_at REAL
             )
             """
+        )
+        _ensure_rooms_schema(connection)
+
+
+def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(rooms)").fetchall()
+    }
+    alter_statements = {
+        "id": "ALTER TABLE rooms ADD COLUMN id TEXT",
+        "name": "ALTER TABLE rooms ADD COLUMN name TEXT",
+        "grade": "ALTER TABLE rooms ADD COLUMN grade INTEGER",
+        "subject": "ALTER TABLE rooms ADD COLUMN subject TEXT",
+        "selected_game_id": "ALTER TABLE rooms ADD COLUMN selected_game_id TEXT",
+        "updated_at": "ALTER TABLE rooms ADD COLUMN updated_at REAL",
+        "started_at": "ALTER TABLE rooms ADD COLUMN started_at REAL",
+        "finished_at": "ALTER TABLE rooms ADD COLUMN finished_at REAL",
+    }
+    for column_name, statement in alter_statements.items():
+        if column_name not in columns:
+            connection.execute(statement)
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(rooms)").fetchall()
+    }
+    now = time.time()
+    if "id" in columns:
+        connection.execute("UPDATE rooms SET id = COALESCE(id, code) WHERE id IS NULL OR id = ''")
+    if "name" in columns:
+        connection.execute("UPDATE rooms SET name = COALESCE(name, 'Sala ' || code) WHERE name IS NULL OR name = ''")
+    if "updated_at" in columns:
+        connection.execute(
+            "UPDATE rooms SET updated_at = COALESCE(updated_at, created_at, ?) WHERE updated_at IS NULL OR updated_at = 0",
+            (now,),
         )
 
 
@@ -94,13 +153,21 @@ def _extract_zip_safely(archive: zipfile.ZipFile, destination: Path) -> None:
 def load_seed_games() -> list[GameManifest]:
     with SEED_GAMES_PATH.open(encoding="utf-8") as file:
         payload = json.load(file)
-    return [GameManifest(**game, source="seed") for game in payload]
+    games = []
+    for game_data in payload:
+        game = GameManifest(**game_data, source="seed")
+        if game.entry_point:
+            game = game.model_copy(update={
+                "play_url": f"/static/games/{game.id}/{game.entry_point}"
+            })
+        games.append(game)
+    return games
 
 
 def list_imported_games() -> list[GameManifest]:
     with get_connection() as connection:
         rows = connection.execute(
-            "SELECT manifest_json, status, thumbnail_url FROM imported_games ORDER BY updated_at DESC"
+            "SELECT manifest_json, status, thumbnail_url, extracted_dir FROM imported_games ORDER BY updated_at DESC"
         ).fetchall()
 
     games: list[GameManifest] = []
@@ -109,6 +176,16 @@ def list_imported_games() -> list[GameManifest]:
         manifest_payload["status"] = row["status"]
         manifest_payload["thumbnail"] = row["thumbnail_url"]
         manifest_payload["source"] = "imported"
+
+        # Compute play_url from extracted_dir relative to STATIC_DIR
+        entry_point = manifest_payload.get("entry_point")
+        if entry_point and row["extracted_dir"]:
+            try:
+                rel = Path(row["extracted_dir"]).relative_to(STATIC_DIR)
+                manifest_payload["play_url"] = f"/static/{rel.as_posix()}/{entry_point}"
+            except ValueError:
+                pass
+
         games.append(GameManifest(**manifest_payload))
     return games
 
@@ -155,12 +232,17 @@ def save_imported_game(manifest: GameManifest, package_bytes: bytes, archive: zi
     if not thumbnail_path and "preview/cover.png" in archive.namelist():
         thumbnail_path = "preview/cover.png"
 
+    play_url = None
+    if manifest.entry_point:
+        play_url = f"/static/imported/{game_slug}/{version_slug}/{manifest.entry_point}"
+
     manifest = manifest.model_copy(update={
         "status": "test",
         "thumbnail": (
             f"/static/imported/{game_slug}/{version_slug}/{thumbnail_path}" if thumbnail_path else None
         ),
         "source": "imported",
+        "play_url": play_url,
     })
 
     package_path.write_bytes(package_bytes)
@@ -228,27 +310,60 @@ def _generate_room_code(length: int = 6) -> str:
     return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
-def create_room(game_id: str) -> Room:
+def create_room(*, name: str, grade: int | None = None, subject: str | None = None, game_id: str | None = None) -> Room:
     code = _generate_room_code()
     while get_room(code) is not None:
         code = _generate_room_code()
 
-    room = Room(code=code, game_id=game_id, created_at=time.time())
+    room = Room(
+        id=f"room_{uuid4().hex}",
+        code=code,
+        name=name.strip(),
+        grade=grade,
+        subject=subject,
+        selected_game_id=game_id,
+        created_at=time.time(),
+    )
     with get_connection() as connection:
         connection.execute(
-            "INSERT INTO rooms (code, game_id, status, players_json, created_at) VALUES (?, ?, ?, ?, ?)",
-            (room.code, room.game_id, room.status, json.dumps(room.players), room.created_at),
+            """
+            INSERT INTO rooms (
+                id, code, name, grade, subject, selected_game_id, status,
+                players_json, created_at, updated_at, started_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                room.id,
+                room.code,
+                room.name,
+                room.grade,
+                room.subject,
+                room.selected_game_id,
+                room.status,
+                json.dumps(room.players),
+                room.created_at,
+                room.updated_at,
+                room.started_at,
+                room.finished_at,
+            ),
         )
     return room
 
 
 def _room_from_row(row: sqlite3.Row) -> Room:
     return Room(
+        id=row["id"] or f"room_{row['code']}",
         code=row["code"],
-        game_id=row["game_id"],
+        name=row["name"] or f"Sala {row['code']}",
+        grade=row["grade"],
+        subject=row["subject"],
+        selected_game_id=row["selected_game_id"],
         status=row["status"],
         players=json.loads(row["players_json"]),
         created_at=row["created_at"],
+        updated_at=row["updated_at"] or row["created_at"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
     )
 
 
@@ -267,9 +382,33 @@ def list_rooms() -> list[Room]:
 
 
 def save_room(room: Room) -> Room:
+    room.updated_at = time.time()
     with get_connection() as connection:
         connection.execute(
-            "UPDATE rooms SET status = ?, players_json = ? WHERE code = ?",
-            (room.status, json.dumps(room.players), room.code),
+            """
+            UPDATE rooms SET
+                name = ?,
+                grade = ?,
+                subject = ?,
+                selected_game_id = ?,
+                status = ?,
+                players_json = ?,
+                updated_at = ?,
+                started_at = ?,
+                finished_at = ?
+            WHERE code = ?
+            """,
+            (
+                room.name,
+                room.grade,
+                room.subject,
+                room.selected_game_id,
+                room.status,
+                json.dumps(room.players),
+                room.updated_at,
+                room.started_at,
+                room.finished_at,
+                room.code,
+            ),
         )
     return room

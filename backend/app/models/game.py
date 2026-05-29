@@ -25,6 +25,7 @@ class GameManifest(BaseModel):
     status: str = "test"
     api_version: str = "1.0"
     source: Literal["seed", "imported"] = "seed"
+    play_url: Optional[str] = None
 
     @field_validator("thumbnail", mode="before")
     @classmethod

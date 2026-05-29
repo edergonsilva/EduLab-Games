@@ -7,10 +7,13 @@ import JoinRoom from './pages/JoinRoom'
 import Teacher from './pages/Teacher'
 import Admin from './pages/Admin'
 import About from './pages/About'
+import GamePlayer from './pages/GamePlayer'
 
 export default function App() {
   return (
     <Routes>
+      {/* Game player runs outside the main layout (full screen) */}
+      <Route path="/jogar/:gameId" element={<GamePlayer />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/disciplinas/:grade" element={<Subjects />} />

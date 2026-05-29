@@ -171,17 +171,45 @@ export default function Admin() {
                           </div>
                         </div>
                         <p className="admin-game-description">{game.description ?? 'Sem descrição cadastrada.'}</p>
+                        <div className="admin-game-details">
+                          {game.subject && <span className="admin-game-tag">📚 {game.subject}</span>}
+                          {game.school_grades.length > 0 && (
+                            <span className="admin-game-tag">🎓 {game.school_grades.map(g => `${g}º`).join(', ')}</span>
+                          )}
+                          <span className="admin-game-tag">⏱ {game.estimated_duration_minutes} min</span>
+                        </div>
                         <div className="admin-game-footer">
                           <small>Modos: {game.mode.join(', ')}</small>
-                          {game.source === 'imported' && game.status !== 'published' && (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => publishMutation.mutate({ gameId: game.id, version: game.version, status: 'published' })}
-                              disabled={publishMutation.isPending}
-                            >
-                              Publicar
-                            </button>
-                          )}
+                          <div className="admin-game-actions">
+                            {game.play_url && (
+                              <a
+                                className="btn btn-outline btn-sm"
+                                href={`/jogar/${game.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                ▶ Testar
+                              </a>
+                            )}
+                            {game.source === 'imported' && game.status !== 'published' && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => publishMutation.mutate({ gameId: game.id, version: game.version, status: 'published' })}
+                                disabled={publishMutation.isPending}
+                              >
+                                Publicar
+                              </button>
+                            )}
+                            {game.source === 'imported' && game.status === 'published' && (
+                              <button
+                                className="btn btn-outline btn-sm"
+                                onClick={() => publishMutation.mutate({ gameId: game.id, version: game.version, status: 'test' })}
+                                disabled={publishMutation.isPending}
+                              >
+                                Despublicar
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

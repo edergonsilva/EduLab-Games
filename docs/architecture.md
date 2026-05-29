@@ -25,8 +25,8 @@ Backend FastAPI (porta 8000)
 | GET | `/health` | health check |
 | GET | `/api/catalog/grades` | anos escolares |
 | GET | `/api/catalog/subjects` | disciplinas |
-| GET | `/api/games` | catálogo combinado (seed + importados publicados) |
-| GET | `/api/games/{id}` | detalhes de um jogo |
+| GET | `/api/games` | catálogo combinado (seed + importados publicados) com `play_url` |
+| GET | `/api/games/{id}` | detalhes de um jogo, incluindo `play_url` |
 | POST | `/api/import/edugame` | valida e importa pacote `.edugame` |
 | GET | `/api/import/edugame/spec` | resumo da spec `.edugame` |
 | GET | `/api/admin/games` | listagem administrativa de jogos |
@@ -35,6 +35,8 @@ Backend FastAPI (porta 8000)
 | GET | `/api/rooms` | lista salas persistidas |
 | GET | `/api/rooms/{code}` | consulta sala |
 | POST | `/api/rooms/{code}/join` | entra em sala |
+| GET | `/static/games/{game_id}/…` | arquivos dos jogos seed |
+| GET | `/static/imported/{slug}/{ver}/…` | arquivos dos jogos importados |
 
 ### Persistência do MVP
 
@@ -69,13 +71,39 @@ Rotas principais:
 | `/` | seleção de ano |
 | `/disciplinas/:grade` | seleção de disciplina |
 | `/jogos/:grade/:subject` | catálogo |
+| `/jogar/:gameId` | **runner/player do jogo** (iframe + postMessage) |
 | `/entrar-sala` | entrada por código |
 | `/professor` | criação/listagem de salas |
 | `/admin` | login, upload e publicação básica |
 
-## Limites atuais do bootstrap
+## Runner de jogos (`/jogar/:gameId`)
+
+Ao clicar em **Jogar Agora** no catálogo, o frontend navega para `/jogar/:gameId`.
+
+O runner:
+1. busca metadados do jogo em `GET /api/games/{gameId}`
+2. resolve `play_url` retornada pelo backend
+3. carrega o jogo num `<iframe sandbox>`
+4. envia contexto inicial via `postMessage` (tipo `init`)
+5. escuta eventos do jogo:
+   - `game_started`
+   - `question_answered`
+   - `score_updated`
+   - `game_finished`
+6. exibe log de eventos (expansível) para diagnóstico local
+
+## URLs de jogos
+
+| Origem | URL do jogo |
+|--------|-------------|
+| Seed | `/static/games/{game_id}/{entry_point}` |
+| Importado | `/static/imported/{game_slug}/{version_slug}/{entry_point}` |
+
+Os arquivos estáticos dos jogos seed ficam em `backend/app/data/seed_games/` e são sincronizados para `data_storage/static/games/` na inicialização do backend.
+
+## Limites atuais do MVP
 
 - sem WebSocket em tempo real
 - sem parser completo de PDF
 - autenticação admin ainda é senha simples sem sessão persistente
-- execução real do jogo HTML5 ainda está fora do escopo desta etapa
+- sem multiplayer em tempo real (reservado para fase posterior)

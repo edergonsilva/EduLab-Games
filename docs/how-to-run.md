@@ -41,34 +41,32 @@ URLs principais:
 ### Com Docker
 Tudo fica no volume `edulab-data`, montado em `/app/data_storage` no container do backend.
 
-## 4. Smoke test manual sugerido
+## 4. Smoke test manual sugerido (Prioridade 3)
 
 1. **Subir containers**
    - `docker compose up --build`
-2. **Validar health**
-   - abrir `http://localhost:8000/health`
-3. **Abrir frontend**
-   - abrir `http://localhost:3000`
-4. **Criar sala**
-   - ir em `Professor`
-   - escolher um jogo com `sala_codigo`
-   - criar a sala e anotar o código
-5. **Entrar em sala**
-   - abrir `Entrar na Sala`
-   - informar o código criado
-6. **Logar no admin**
-   - abrir `Admin`
-   - usar a senha configurada
-7. **Importar `.edugame`**
-   - enviar um pacote válido
-   - confirmar feedback de sucesso
-   - verificar que o jogo aparece com status `test`
-8. **Publicar o jogo importado** (opcional, mas recomendado)
-   - clicar em `Publicar` no painel admin
-   - voltar ao catálogo e confirmar se o jogo aparece para os alunos
-9. **Reiniciar o backend**
-   - parar/subir novamente os serviços
-   - confirmar que jogos importados e salas ainda aparecem
+2. **Abrir painel do professor**
+   - `http://localhost:3000/professor`
+3. **Criar sala**
+   - preencher nome da atividade
+   - opcional: filtrar por ano/disciplina
+   - selecionar jogo com modo `sala_codigo`
+   - clicar em `Criar Sala`
+4. **Selecionar jogo da sala**
+   - na lista de salas, confirmar/ajustar o jogo
+   - clicar em `Salvar jogo`
+5. **Iniciar atividade**
+   - clicar em `Iniciar atividade` e validar status `active`
+6. **Abrir entrada por código em outro navegador**
+   - `http://localhost:3000/entrar-sala`
+7. **Informar código da sala**
+   - preencher código + nome do aluno e entrar
+8. **Validar estado de espera ou abertura do jogo**
+   - se a sala estiver `waiting`, a tela mostra espera amigável
+   - se estiver `active`, o botão `Entrar no jogo da sala` abre o runner correto
+9. **Validar contexto enviado ao jogo**
+   - no runner, conferir logs no console com `platform_context`
+   - validar presença de `mode`, `origin` e dados da sala (`room_code`, `room_id`, `room_name`)
 
 ## 5. Desenvolvimento sem Docker
 
