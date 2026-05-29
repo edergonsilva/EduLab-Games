@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { AxiosError } from 'axios'
 import {
   adminLogin,
+  getActivities,
   getAdminGames,
   setAdminGameStatus,
   uploadEdugame,
+  type Activity,
   type Game,
 } from '../services/api'
 import './Admin.css'
@@ -26,6 +28,13 @@ function statusBadgeClass(status: string) {
   return 'badge-orange'
 }
 
+function formatTimestamp(value?: number | null) {
+  if (!value) return '—'
+  return new Date(value * 1000).toLocaleString('pt-BR')
+}
+
+const ACTIVITY_ID_DISPLAY_LENGTH = 8
+
 export default function Admin() {
   const queryClient = useQueryClient()
   const [password, setPassword] = useState('')
@@ -40,6 +49,12 @@ export default function Admin() {
     queryKey: ['admin-games'],
     queryFn: () => getAdminGames(),
     enabled: authed,
+  })
+  const { data: activities = [], isLoading: loadingActivities } = useQuery<Activity[]>({
+    queryKey: ['admin-activities'],
+    queryFn: () => getActivities(12),
+    enabled: authed,
+    refetchInterval: 5000,
   })
 
   const importMutation = useMutation({
@@ -184,7 +199,7 @@ export default function Admin() {
                             {game.play_url && (
                               <a
                                 className="btn btn-outline btn-sm"
-                                href={`/jogar/${game.id}`}
+                                href={`/jogar/${game.id}?mode=solo&origin=admin-test`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
@@ -215,6 +230,47 @@ export default function Admin() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </div>
+
+          <div className="card admin-card admin-games-card">
+            <h3 className="card-heading">🧾 Histórico recente de atividades</h3>
+            {loadingActivities ? (
+              <div className="placeholder-area">⏳ Carregando atividades...</div>
+            ) : activities.length === 0 ? (
+              <div className="placeholder-area">Nenhuma atividade registrada ainda.</div>
+            ) : (
+              <div className="admin-games-list">
+                {activities.map(activity => (
+                  <div key={activity.id} className="admin-game-item">
+                    <div className="admin-game-thumb"><span>🧪</span></div>
+                    <div className="admin-game-main">
+                      <div className="admin-game-header">
+                        <div>
+                          <strong>{activity.title ?? activity.game_name ?? activity.game_id}</strong>
+                          <div className="admin-game-meta">
+                            {activity.id.slice(-ACTIVITY_ID_DISPLAY_LENGTH)} · {activity.room_code ? `Sala ${activity.room_code}` : activity.origin}
+                          </div>
+                        </div>
+                        <div className="admin-game-badges">
+                          <span className={`badge ${statusBadgeClass(activity.status === 'finished' ? 'published' : activity.status === 'active' ? 'test' : 'archived')}`}>
+                            {activity.status}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="admin-game-details">
+                        <span className="admin-game-tag">🎮 {activity.game_name ?? activity.game_id}</span>
+                        <span className="admin-game-tag">🕒 {formatTimestamp(activity.created_at)}</span>
+                        <span className="admin-game-tag">📨 {activity.event_count} evento(s)</span>
+                        <span className="admin-game-tag">⭐ {activity.last_score ?? '—'}</span>
+                      </div>
+                      <small>
+                        Início: {formatTimestamp(activity.started_at)} • Fim: {formatTimestamp(activity.finished_at)} • Último evento: {formatTimestamp(activity.last_event_at)}
+                      </small>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -5,7 +5,7 @@ Plataforma local-first de jogos educativos para laboratórios de informática es
 > Desenvolvida por **Ederson Gonçalves da Silva**  
 > Visual inspirado nas cores da bandeira de Itajaí (amarelo & roxo)
 
-## O que já é possível testar nesta versão (Prioridade 3)
+## O que já é possível testar nesta versão (Prioridade 4)
 
 - **execução real de jogos** — catálogo abre jogos num runner iframe completo
 - 3 jogos seed funcionais: Quiz de Múltipla Escolha, Arrastar e Soltar, Desafio de Contas
@@ -15,6 +15,9 @@ Plataforma local-first de jogos educativos para laboratórios de informática es
 - catálogo com jogos base + jogos importados persistidos em SQLite
 - fluxo de sala por código funcional com criação, seleção de jogo e início de atividade pelo professor
 - entrada de aluno por código com estado de espera e abertura automática do jogo quando a sala estiver ativa
+- atividades/sessões persistidas com status, timestamps e vínculo com sala/jogo
+- registro persistente de eventos do runner/jogo (`game_started`, `question_answered`, `score_updated`, `game_finished`)
+- histórico básico de atividades no painel do professor e no admin com resumo de eventos/score
 
 ## Serviços
 
@@ -105,6 +108,29 @@ http://localhost:8000/health
   - `mode`, `origin`
   - `room_code`, `room_id`, `room_name` (quando aplicável)
   - `grade`, `subject` (quando aplicável)
+  - `activity.id`, `activity.status`, `activity.origin`
+
+### 9. Validar histórico e persistência da Prioridade 4
+1. Após iniciar a atividade e jogar alguns segundos, volte para `http://localhost:3000/professor`
+2. Confira o bloco **🕘 Histórico recente de atividades**
+3. Valide:
+   - status da atividade
+   - jogo associado
+   - horário de início/fim
+   - quantidade de eventos
+   - última pontuação conhecida
+4. Em `http://localhost:3000/admin`, confira a seção **🧾 Histórico recente de atividades**
+5. Opcionalmente, abra `http://localhost:8000/docs` e consulte:
+   - `GET /api/activities`
+   - `GET /api/activities/{activity_id}`
+   - `POST /api/activities/ensure`
+   - `POST /api/activities/{activity_id}/events`
+
+## Conceitos da Prioridade 4
+
+- **Sala**: agrupador pedagógico por código, criado pelo professor, com jogo selecionado e estado de turma (`waiting`, `active`, `finished`).
+- **Atividade / sessão**: registro persistido de uma execução pedagógica vinculada a um jogo e, quando aplicável, a uma sala. Guarda origem, status, timestamps e resumo do uso.
+- **Execução do jogo**: abertura concreta do runner/iframe por professor ou aluno usando o contexto de uma atividade. Uma execução envia eventos para a atividade atual; no futuro isso permite acompanhamento quase em tempo real sem trocar o modelo base.
 
 ## Geração de pacote `.edugame` de exemplo
 

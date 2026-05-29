@@ -97,12 +97,17 @@ Assim que o iframe carrega, o runner envia:
 ```json
 {
   "type": "platform_context",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "game": {
     "id": "meu_jogo",
     "name": "Meu Jogo",
     "subject": "matematica",
     "grades": [2, 3]
+  },
+  "activity": {
+    "id": "activity_xxx",
+    "status": "active",
+    "origin": "room"
   },
   "context": {
     "mode": "solo",
@@ -144,6 +149,24 @@ Quando o jogo envia `ready` ou `request_state`, o runner responde com:
 ```json
 { "type": "platform_state", "score": 10, "started": true, "finished": false }
 ```
+
+### Encaminhamento shell ↔ backend
+
+Na Prioridade 4, o shell também:
+
+1. garante uma atividade persistida via `POST /api/activities/ensure`
+2. recebe o `postMessage` do jogo
+3. valida minimamente o tipo de evento
+4. encaminha o evento para `POST /api/activities/{activity_id}/events`
+5. o backend grava `timestamp`, `activity_id`, `room_id`/`room_code`, `game_id`, `event_type` e `payload`
+
+Além dos eventos vindos do jogo, a plataforma também pode registrar eventos de contexto próprios, como `runner_opened` e `room_joined`, para apoiar histórico e rastreabilidade da atividade.
+
+Limites atuais:
+
+- sem WebSocket ou sincronização completa em tempo real
+- sem identificação individual avançada por aluno autenticado
+- histórico resumido por atividade, ainda sem analytics sofisticados
 
 ## Empacotando um exemplo
 

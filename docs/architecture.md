@@ -4,7 +4,7 @@
 
 O EduLab Games é uma plataforma local-first composta por:
 
-- **backend FastAPI** para catálogo, importação, salas e painel admin
+- **backend FastAPI** para catálogo, importação, salas, atividades e painel admin
 - **frontend React/Vite** para os fluxos web
 - **SQLite + armazenamento em disco** para persistência mínima do MVP local
 
@@ -12,7 +12,7 @@ O EduLab Games é uma plataforma local-first composta por:
 Frontend (porta 3000/5173)
         ↓ HTTP
 Backend FastAPI (porta 8000)
-        ├── SQLite (jogos importados e salas)
+        ├── SQLite (jogos importados, salas, atividades e eventos)
         └── storage local (pacotes .edugame e assets extraídos)
 ```
 
@@ -35,13 +35,17 @@ Backend FastAPI (porta 8000)
 | GET | `/api/rooms` | lista salas persistidas |
 | GET | `/api/rooms/{code}` | consulta sala |
 | POST | `/api/rooms/{code}/join` | entra em sala |
+| GET | `/api/activities` | lista atividades/sessões recentes |
+| GET | `/api/activities/{id}` | detalha atividade com eventos recentes |
+| POST | `/api/activities/ensure` | obtém/cria atividade usada pelo runner |
+| POST | `/api/activities/{id}/events` | persiste evento recebido do jogo |
 | GET | `/static/games/{game_id}/…` | arquivos dos jogos seed |
 | GET | `/static/imported/{slug}/{ver}/…` | arquivos dos jogos importados |
 
 ### Persistência do MVP
 
 - **JSON estático** para anos, disciplinas e jogos seed/base
-- **SQLite** para jogos importados e salas
+- **SQLite** para jogos importados, salas, atividades e eventos
 - **filesystem local** para pacotes `.edugame` e thumbnails/assets extraídos
 
 Local padrão sem Docker:
@@ -84,13 +88,21 @@ O runner:
 1. busca metadados do jogo em `GET /api/games/{gameId}`
 2. resolve `play_url` retornada pelo backend
 3. carrega o jogo num `<iframe sandbox>`
-4. envia contexto inicial via `postMessage` (tipo `init`)
-5. escuta eventos do jogo:
+4. garante/recupera uma atividade persistida via backend
+5. envia contexto inicial via `postMessage` com `context` + `activity`
+6. encaminha eventos relevantes do jogo para `POST /api/activities/{id}/events`
+7. exibe log de eventos (expansível) para diagnóstico local
+8. escuta eventos do jogo:
    - `game_started`
    - `question_answered`
    - `score_updated`
    - `game_finished`
-6. exibe log de eventos (expansível) para diagnóstico local
+
+## Sala × atividade × execução
+
+- **Sala**: espaço pedagógico com código de acesso e estado da turma.
+- **Atividade**: sessão persistida vinculada ao jogo e, opcionalmente, à sala; guarda ciclo de vida, timestamps e resumo.
+- **Execução**: abertura concreta do runner/iframe por um usuário usando o contexto de uma atividade existente.
 
 ## URLs de jogos
 

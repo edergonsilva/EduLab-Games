@@ -51,12 +51,48 @@ export interface Room {
   grade?: number | null
   subject?: string | null
   selected_game_id?: string | null
+  current_activity_id?: string | null
   status: string
   players: string[]
   created_at: number
   updated_at: number
   started_at?: number | null
   finished_at?: number | null
+}
+
+export interface Activity {
+  id: string
+  room_id?: string | null
+  room_code?: string | null
+  game_id: string
+  game_name?: string | null
+  origin: 'solo' | 'room' | 'admin-test'
+  status: 'created' | 'waiting' | 'active' | 'finished' | 'aborted'
+  title?: string | null
+  grade?: number | null
+  subject?: string | null
+  created_at: number
+  started_at?: number | null
+  finished_at?: number | null
+  updated_at: number
+  last_event_at?: number | null
+  event_count: number
+  game_started: boolean
+  game_finished: boolean
+  last_score?: number | null
+}
+
+export interface ActivityDetail extends Activity {
+  recent_events: Array<{
+    id: string
+    activity_id: string
+    room_id?: string | null
+    room_code?: string | null
+    game_id: string
+    event_type: string
+    payload: Record<string, unknown>
+    created_at: number
+  }>
 }
 
 export interface HealthResponse {
@@ -138,6 +174,32 @@ export const startRoom = (code: string, game_id?: string) =>
 
 export const finishRoom = (code: string) =>
   api.post<Room>(`/rooms/${code}/finish`, {}).then(r => r.data)
+
+export const getActivities = (limit = 30) =>
+  api.get<Activity[]>('/activities', { params: { limit } }).then(r => r.data)
+
+export const getActivity = (activityId: string) =>
+  api.get<ActivityDetail>(`/activities/${activityId}`).then(r => r.data)
+
+export interface EnsureActivityPayload {
+  activity_id?: string
+  room_id?: string
+  room_code?: string
+  game_id: string
+  origin: 'solo' | 'room' | 'admin-test'
+  title?: string
+  grade?: number
+  subject?: string
+}
+
+export const ensureActivity = (payload: EnsureActivityPayload) =>
+  api.post<Activity>('/activities/ensure', payload).then(r => r.data)
+
+export const recordActivityEvent = (
+  activityId: string,
+  eventType: 'game_started' | 'question_answered' | 'score_updated' | 'game_finished' | 'pause' | 'runner_opened',
+  payload: Record<string, unknown>,
+) => api.post<Activity>(`/activities/${activityId}/events`, { event_type: eventType, payload }).then(r => r.data)
 
 export const adminLogin = (password: string) =>
   api.post('/admin/login', { password }).then(r => r.data)

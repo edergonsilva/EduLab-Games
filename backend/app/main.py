@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import admin, catalog, games, health, import_edugame, rooms
+from app.routers import activities, admin, catalog, games, health, import_edugame, rooms
 from app.services.storage import initialize_storage
 
 
@@ -36,5 +36,6 @@ app.include_router(health.router, tags=["health"])
 app.include_router(catalog.router, prefix="/api/catalog", tags=["catalog"])
 app.include_router(games.router, prefix="/api/games", tags=["games"])
 app.include_router(rooms.router, prefix="/api/rooms", tags=["rooms"])
+app.include_router(activities.router, prefix="/api/activities", tags=["activities"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(import_edugame.router, prefix="/api/import", tags=["import"])

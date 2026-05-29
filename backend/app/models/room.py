@@ -11,6 +11,7 @@ class Room(BaseModel):
     grade: Optional[int] = None
     subject: Optional[str] = None
     selected_game_id: Optional[str] = None
+    current_activity_id: Optional[str] = None
     status: Literal["waiting", "active", "finished"] = "waiting"
     players: List[str] = Field(default_factory=list)
     created_at: float = 0.0

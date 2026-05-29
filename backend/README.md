@@ -1,6 +1,6 @@
 # Backend do EduLab Games
 
-API FastAPI responsável por catálogo, importação `.edugame`, salas e painel admin.
+API FastAPI responsável por catálogo, importação `.edugame`, salas, atividades e painel admin.
 
 ## Rodando localmente
 
@@ -29,9 +29,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - `PATCH /api/rooms/{code}`
 - `POST /api/rooms/{code}/start`
 - `GET /api/rooms`
+- `GET /api/activities`
+- `GET /api/activities/{activity_id}`
+- `POST /api/activities/ensure`
+- `POST /api/activities/{activity_id}/events`
 
 ## Observações do MVP
 
 - anos, disciplinas e jogos seed continuam em JSON
-- jogos importados e salas agora persistem em SQLite
+- jogos importados, salas, atividades e eventos agora persistem em SQLite
 - thumbnails importadas são servidas em `/static/imported/...`

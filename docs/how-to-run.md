@@ -41,7 +41,7 @@ URLs principais:
 ### Com Docker
 Tudo fica no volume `edulab-data`, montado em `/app/data_storage` no container do backend.
 
-## 4. Smoke test manual sugerido (Prioridade 3)
+## 4. Smoke test manual sugerido (Prioridade 4)
 
 1. **Subir containers**
    - `docker compose up --build`
@@ -66,7 +66,17 @@ Tudo fica no volume `edulab-data`, montado em `/app/data_storage` no container d
    - se estiver `active`, o botão `Entrar no jogo da sala` abre o runner correto
 9. **Validar contexto enviado ao jogo**
    - no runner, conferir logs no console com `platform_context`
-   - validar presença de `mode`, `origin` e dados da sala (`room_code`, `room_id`, `room_name`)
+   - validar presença de `mode`, `origin`, `activity.id` e dados da sala (`room_code`, `room_id`, `room_name`)
+10. **Interagir com o jogo**
+   - gerar pelo menos `game_started`, `score_updated` e `game_finished`
+11. **Consultar histórico**
+   - voltar ao painel do professor
+   - conferir o bloco `Histórico recente de atividades`
+   - validar status, timestamps, contagem de eventos e score final/último score
+12. **Consultar API**
+   - abrir `http://localhost:8000/docs`
+   - testar `GET /api/activities`
+   - testar `GET /api/activities/{activity_id}`
 
 ## 5. Desenvolvimento sem Docker
 
@@ -100,6 +110,10 @@ O Vite faz proxy de `/api` e `/health` para `http://localhost:8000`.
 - `POST /api/rooms`
 - `GET /api/rooms`
 - `GET /api/rooms/{code}`
+- `GET /api/activities`
+- `GET /api/activities/{activity_id}`
+- `POST /api/activities/ensure`
+- `POST /api/activities/{activity_id}/events`
 
 ## 7. Rede local
 
