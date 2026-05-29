@@ -97,7 +97,7 @@ Assim que o iframe carrega, o runner envia:
 ```json
 {
   "type": "platform_context",
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "game": {
     "id": "meu_jogo",
     "name": "Meu Jogo",
@@ -159,6 +159,8 @@ Na Prioridade 4, o shell também:
 3. valida minimamente o tipo de evento
 4. encaminha o evento para `POST /api/activities/{activity_id}/events`
 5. o backend grava `timestamp`, `activity_id`, `room_id`/`room_code`, `game_id`, `event_type` e `payload`
+
+Além dos eventos vindos do jogo, a plataforma também pode registrar eventos de contexto próprios, como `runner_opened` e `room_joined`, para apoiar histórico e rastreabilidade da atividade.
 
 Limites atuais:
 

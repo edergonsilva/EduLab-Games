@@ -21,6 +21,8 @@ PACKAGES_DIR = settings.storage_dir / "packages"
 SEED_GAMES_PATH = settings.data_dir / "games.json"
 SEED_GAMES_SOURCE_DIR = settings.data_dir / "seed_games"
 SEED_GAMES_STATIC_DIR = STATIC_DIR / "games"
+ACTIVITY_ID_PREFIX = "activity_"
+ACTIVITY_EVENT_ID_PREFIX = "event_"
 
 
 @contextmanager
@@ -418,7 +420,7 @@ def _room_from_row(row: sqlite3.Row) -> Room:
         grade=row["grade"],
         subject=row["subject"],
         selected_game_id=row["selected_game_id"],
-        current_activity_id=row["current_activity_id"] if "current_activity_id" in row.keys() else None,
+        current_activity_id=row["current_activity_id"] if "current_activity_id" in row else None,
         status=row["status"],
         players=json.loads(row["players_json"]),
         created_at=row["created_at"],
@@ -478,7 +480,7 @@ def save_room(room: Room) -> Room:
 
 
 def _activity_from_row(row: sqlite3.Row) -> Activity:
-    game_name = row["game_name"] if "game_name" in row.keys() else None
+    game_name = row["game_name"] if "game_name" in row else None
     return Activity(
         id=row["id"],
         room_id=row["room_id"],
@@ -494,11 +496,11 @@ def _activity_from_row(row: sqlite3.Row) -> Activity:
         started_at=row["started_at"],
         finished_at=row["finished_at"],
         updated_at=row["updated_at"],
-        last_event_at=row["last_event_at"] if "last_event_at" in row.keys() else None,
-        event_count=row["event_count"] if "event_count" in row.keys() else 0,
-        game_started=bool(row["game_started"]) if "game_started" in row.keys() else False,
-        game_finished=bool(row["game_finished"]) if "game_finished" in row.keys() else False,
-        last_score=row["last_score"] if "last_score" in row.keys() else None,
+        last_event_at=row["last_event_at"] if "last_event_at" in row else None,
+        event_count=row["event_count"] if "event_count" in row else 0,
+        game_started=bool(row["game_started"]) if "game_started" in row else False,
+        game_finished=bool(row["game_finished"]) if "game_finished" in row else False,
+        last_score=row["last_score"] if "last_score" in row else None,
     )
 
 
@@ -531,7 +533,7 @@ def create_activity(
     timestamp = time.time()
     game = get_game(game_id, status=None)
     activity = Activity(
-        id=f"activity_{uuid4().hex}",
+        id=f"{ACTIVITY_ID_PREFIX}{uuid4().hex}",
         room_id=room_id,
         room_code=room_code,
         game_id=game_id,
@@ -736,7 +738,7 @@ def record_activity_event(activity_id: str, *, event_type: str, payload: dict | 
 
     timestamp = time.time()
     event = ActivityEvent(
-        id=f"event_{uuid4().hex}",
+        id=f"{ACTIVITY_EVENT_ID_PREFIX}{uuid4().hex}",
         activity_id=activity.id,
         room_id=activity.room_id,
         room_code=activity.room_code,
@@ -779,6 +781,9 @@ def record_activity_event(activity_id: str, *, event_type: str, payload: dict | 
         if activity.status == "created":
             activity.status = "active"
             activity.started_at = activity.started_at or timestamp
+        if event_type != "game_finished":
+            return save_activity(activity)
+
     if event_type == "game_finished":
         activity.game_finished = True
         activity.status = "finished"

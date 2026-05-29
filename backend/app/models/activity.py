@@ -60,7 +60,15 @@ class EnsureActivityRequest(BaseModel):
 
 
 class RecordActivityEventRequest(BaseModel):
-    event_type: Literal["game_started", "question_answered", "score_updated", "game_finished", "pause", "runner_opened"]
+    event_type: Literal[
+        "game_started",
+        "question_answered",
+        "score_updated",
+        "game_finished",
+        "pause",
+        "runner_opened",
+        "room_joined",
+    ]
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

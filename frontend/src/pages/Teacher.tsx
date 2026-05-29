@@ -32,6 +32,7 @@ const ACTIVITY_STATUS_LABEL: Record<string, string> = {
   aborted: 'Abortada',
 }
 const ROOM_POLL_INTERVAL = 3000
+const ACTIVITY_ID_DISPLAY_LENGTH = 8
 
 function formatTimestamp(value?: number | null) {
   if (!value) return '—'
@@ -284,7 +285,7 @@ export default function Teacher() {
                       </div>
                       {latestActivity && (
                         <div className="room-list-meta">
-                          Atividade {latestActivity.id.slice(-8)} • {latestActivity.event_count} evento(s) • score final {latestActivity.last_score ?? '—'}
+                          Atividade {latestActivity.id.slice(-ACTIVITY_ID_DISPLAY_LENGTH)} • {latestActivity.event_count} evento(s) • última pontuação {latestActivity.last_score ?? '—'}
                         </div>
                       )}
                     </div>

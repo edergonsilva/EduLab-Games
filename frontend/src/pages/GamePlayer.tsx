@@ -37,6 +37,7 @@ const MODE_LABEL: Record<string, string> = {
   solo: 'Solo',
   sala_codigo: 'Sala',
 }
+const ACTIVITY_ID_DISPLAY_LENGTH = 8
 
 const parseOptionalNumber = (value: string | null): number | undefined => {
   if (!value) return undefined
@@ -139,6 +140,7 @@ export default function GamePlayer() {
     iframeRef.current.contentWindow.postMessage(
       {
         type: 'platform_context',
+        // schema 1.2 extends the existing runner context with the persisted activity block.
         schema_version: '1.2',
         game: {
           id: game.id,
@@ -338,7 +340,7 @@ export default function GamePlayer() {
           <span className="player-origin-badge">modo: {modeChip}</span>
           <span className="player-origin-badge">origem: {context.origin}</span>
           {activity && (
-            <span className="player-origin-badge">atividade: {activity.id.slice(-8)}</span>
+            <span className="player-origin-badge">atividade: {activity.id.slice(-ACTIVITY_ID_DISPLAY_LENGTH)}</span>
           )}
           {gameReady && (
             <span className="player-status-badge player-status-ready">✅ Pronto</span>

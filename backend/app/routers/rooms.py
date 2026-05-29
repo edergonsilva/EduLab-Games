@@ -1,3 +1,4 @@
+import logging
 import time
 
 from fastapi import APIRouter, HTTPException
@@ -8,6 +9,7 @@ from app.services.storage import finish_activity, get_game, get_room, list_rooms
 from app.services.storage import record_activity_event, save_room
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=Room, status_code=201)
@@ -49,11 +51,13 @@ async def join_room(code: str, body: JoinRoomRequest):
         room.players.append(body.player_name)
     room = save_room(room)
     if room.current_activity_id:
-        record_activity_event(
+        updated_activity = record_activity_event(
             room.current_activity_id,
             event_type="room_joined",
             payload={"player_name": body.player_name, "source": "room_join"},
         )
+        if updated_activity is None:
+            logger.warning("Failed to record room_joined for activity %s", room.current_activity_id)
     return room
 
 
