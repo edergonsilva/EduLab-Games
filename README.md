@@ -25,7 +25,7 @@ Open **http://localhost:3000** in your browser.
 ## Features
 
 - 📦 Import `.edugame` packages through the browser UI or REST API
-- 🔄 **Clean reimportation** — uploading a game with an existing slug automatically removes all artefacts (extracted files, package, database record) before importing the new version
+- 🔄 **Clean reimportation** — uploading a game with an existing slug automatically removes all artifacts (extracted files, package, database record) before importing the new version
 - 🎮 In-browser game runner via static file serving
 - 🏫 Room management for classroom sessions
 

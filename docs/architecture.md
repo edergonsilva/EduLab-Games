@@ -70,6 +70,6 @@ See [`docs/edugame-packaging.md`](edugame-packaging.md#reimportation) for the
 full description of the clean reimportation strategy.
 
 In short: when a `.edugame` file whose `slug` is already in the database is
-imported again, the platform **removes all on-disk artefacts and the database
+imported again, the platform **removes all on-disk artifacts and the database
 row of the previous game before extracting the new package**.  This prevents
 stale CSS/JS from being served after an update.

@@ -24,7 +24,7 @@ python -m pytest tests/ -v
 | GET | `/api/games/` | List all imported games |
 | GET | `/api/games/{slug}` | Get a single game |
 | POST | `/api/games/import` | Import a `.edugame` package |
-| DELETE | `/api/games/{slug}` | Delete a game and its artefacts |
+| DELETE | `/api/games/{slug}` | Delete a game and its artifacts |
 | GET | `/api/rooms/` | List rooms |
 | POST | `/api/rooms/` | Create a room |
 | GET | `/api/rooms/{code}` | Get a room by code |

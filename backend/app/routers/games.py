@@ -78,7 +78,7 @@ def _normalise_slug(raw: str) -> str:
 
 
 def _remove_game_artifacts(game: Game) -> None:
-    """Delete all on-disk artefacts associated with *game*.
+    """Delete all on-disk artifacts associated with *game*.
 
     Removes:
     * The directory containing the extracted static files.
@@ -124,7 +124,7 @@ def get_game(slug: str, db: Session = Depends(get_db)):
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_game(slug: str, db: Session = Depends(get_db)):
-    """Remove a game and all its on-disk artefacts."""
+    """Remove a game and all its on-disk artifacts."""
     game = db.query(Game).filter(Game.slug == slug).first()
     if not game:
         raise HTTPException(status_code=404, detail=f"Game '{slug}' not found")
@@ -141,7 +141,7 @@ def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
     If a game with the same slug already exists the previous game's extracted
     files and package file are **removed from disk** and its database record is
     deleted before the new package is saved.  This guarantees a clean
-    replacement with no leftover artefacts from the old version.
+    replacement with no leftover artifacts from the old version.
     """
     if not file.filename or not file.filename.endswith(".edugame"):
         raise HTTPException(
@@ -166,7 +166,7 @@ def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     if replaced:
         logger.info(
-            "Game '%s' already exists (version %s). Removing previous artefacts "
+            "Game '%s' already exists (version %s). Removing previous artifacts "
             "before importing new package.",
             slug,
             existing_game.version,
@@ -223,15 +223,13 @@ def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
     db.commit()
     db.refresh(game)
 
-    action = "replaced" if replaced else "imported"
-    message = (
-        f"Game '{slug}' v{version} {action} successfully."
-        if not replaced
-        else (
+    if replaced:
+        message = (
             f"Game '{slug}' v{version} imported. "
-            "Previous version's artefacts were removed before import."
+            "Previous version's artifacts were removed before import."
         )
-    )
+    else:
+        message = f"Game '{slug}' v{version} imported successfully."
 
     logger.info(message)
     return ImportResult(game=game, replaced=replaced, message=message)

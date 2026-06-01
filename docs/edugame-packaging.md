@@ -72,7 +72,7 @@ Update `version` in `manifest.json` before packaging:
 ```
 
 Then reimport via the platform UI or API.  The platform will automatically
-**remove all artefacts from the previous version** before extracting the new
+**remove all artifacts from the previous version** before extracting the new
 one — see [reimportation](edugame-spec.md#reimportation--clean-replacement).
 
 ---
@@ -108,7 +108,7 @@ game's sub-directory.
 - name: Package game
   run: python tools/package_edugame.py game/ --output-dir dist/
 
-- name: Upload artefact
+- name: Upload artifact
   uses: actions/upload-artifact@v4
   with:
     name: edugame-package

@@ -278,7 +278,7 @@ class TestCleanReimportation:
             files={"file": ("meu-jogo.edugame", pkg_v2, "application/octet-stream")},
         )
         message = resp.json()["message"].lower()
-        assert "previous" in message or "removed" in message or "artefact" in message
+        assert "previous" in message or "removed" in message or "artifact" in message
 
 
 class TestReimportIsolation:
