@@ -59,7 +59,7 @@ No import (`POST /api/import/edugame`), o backend:
 2. valida se `entry_point` existe dentro do pacote;
 3. extrai os arquivos preservando caminhos relativos;
 4. monta a URL de execução usando esse arquivo:
-   - seed: `/static/games/{game_id}/{entry_point}`
+   - jogo nativo da plataforma (seed): `/static/games/{game_id}/{entry_point}`
    - importado: `/static/imported/{game_slug}/{version_slug}/{entry_point}`
 
 ## Fluxo completo (autor → plataforma)

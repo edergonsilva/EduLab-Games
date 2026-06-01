@@ -23,7 +23,12 @@ def _resolve_entry_point(game_dir: Path, entry_point: str) -> Path:
     if entry_path.is_absolute() or ".." in entry_path.parts:
         raise ValueError("O campo 'entry_point' não pode usar caminho absoluto nem '..'.")
 
+    game_root = game_dir.resolve()
     resolved = (game_dir / entry_path).resolve()
+    try:
+        resolved.relative_to(game_root)
+    except ValueError as exc:
+        raise ValueError("O campo 'entry_point' deve apontar para arquivo dentro do diretório do jogo.") from exc
     if not resolved.exists():
         raise ValueError(f"O arquivo de entry_point não existe: {entry_point}")
     if not resolved.is_file():
@@ -62,13 +67,22 @@ def _default_output_name(game_dir: Path, manifest: dict) -> str:
 
 def _iter_files(game_dir: Path, output_file: Path) -> list[Path]:
     files: list[Path] = []
+    game_root = game_dir.resolve()
+    resolved_output = output_file.resolve()
     for path in sorted(game_dir.rglob("*")):
         if not path.is_file():
             continue
-        if path.resolve() == output_file.resolve():
+        if path == resolved_output:
             continue
         if path.suffix == ".edugame":
             continue
+        if path.is_symlink():
+            resolved_path = path.resolve()
+            try:
+                resolved_path.relative_to(game_root)
+            except ValueError as exc:
+                rel = path.relative_to(game_dir).as_posix()
+                raise ValueError(f"Link simbólico inseguro fora do diretório do jogo: {rel}") from exc
         files.append(path)
     return files
 
