@@ -3,8 +3,8 @@ import time
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.room import CreateRoomRequest, JoinRoomRequest, Room, StartRoomRequest, UpdateRoomRequest
-from app.services.storage import create_activity, create_room as create_persistent_room
+from app.models.room import CreateRoomRequest, JoinRoomRequest, JoinRoomResponse, Room, StartRoomRequest, UpdateRoomRequest
+from app.services.storage import attach_room_participants_to_activity, create_activity, create_or_update_participant, create_room as create_persistent_room
 from app.services.storage import finish_activity, get_game, get_room, list_rooms as list_persistent_rooms
 from app.services.storage import record_activity_event, save_room
 
@@ -39,7 +39,7 @@ async def get_room_route(code: str):
     return room
 
 
-@router.post("/{code}/join", response_model=Room)
+@router.post("/{code}/join", response_model=JoinRoomResponse)
 async def join_room(code: str, body: JoinRoomRequest):
     """Adiciona um jogador a uma sala existente."""
     room = get_room(code)
@@ -47,18 +47,27 @@ async def join_room(code: str, body: JoinRoomRequest):
         raise HTTPException(status_code=404, detail="Sala não encontrada.")
     if room.status == "finished":
         raise HTTPException(status_code=400, detail="Esta sala já foi encerrada.")
-    if body.player_name not in room.players:
-        room.players.append(body.player_name)
+    participant = create_or_update_participant(
+        room=room,
+        display_name=body.player_name,
+        source=body.source,
+        activity_id=room.current_activity_id,
+    )
+    if participant.display_name not in room.players:
+        room.players.append(participant.display_name)
     room = save_room(room)
     if room.current_activity_id:
         updated_activity = record_activity_event(
             room.current_activity_id,
             event_type="room_joined",
-            payload={"player_name": body.player_name, "source": "room_join"},
+            participant_id=participant.id,
+            display_name=participant.display_name,
+            source=participant.source,
+            payload={"player_name": participant.display_name, "source": "room_join"},
         )
         if updated_activity is None:
             logger.warning("Failed to record room_joined for activity %s", room.current_activity_id)
-    return room
+    return JoinRoomResponse(room=room, participant=participant)
 
 
 @router.patch("/{code}", response_model=Room)
@@ -116,7 +125,9 @@ async def start_room(code: str, body: StartRoomRequest = StartRoomRequest()):
         started_at=room.started_at,
     )
     room.current_activity_id = activity.id
-    return save_room(room)
+    room = save_room(room)
+    attach_room_participants_to_activity(room.code, activity.id)
+    return room
 
 
 @router.post("/{code}/finish", response_model=Room)

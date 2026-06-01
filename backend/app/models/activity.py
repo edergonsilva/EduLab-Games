@@ -3,6 +3,7 @@ import time
 
 from pydantic import BaseModel, Field
 
+from app.models.participant import Participant
 
 class Activity(BaseModel):
     id: str
@@ -39,6 +40,8 @@ class ActivityEvent(BaseModel):
     room_id: Optional[str] = None
     room_code: Optional[str] = None
     game_id: str
+    participant_id: Optional[str] = None
+    participant_display_name: Optional[str] = None
     event_type: str
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: float = 0.0
@@ -69,8 +72,12 @@ class RecordActivityEventRequest(BaseModel):
         "runner_opened",
         "room_joined",
     ]
+    participant_id: Optional[str] = None
+    display_name: Optional[str] = None
+    source: Optional[Literal["manual", "anonymous", "teacher-test", "runner-event"]] = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class ActivityDetail(Activity):
     recent_events: list[ActivityEvent] = Field(default_factory=list)
+    participant_results: list[Participant] = Field(default_factory=list)

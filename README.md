@@ -5,7 +5,7 @@ Plataforma local-first de jogos educativos para laboratórios de informática es
 > Desenvolvida por **Ederson Gonçalves da Silva**  
 > Visual inspirado nas cores da bandeira de Itajaí (amarelo & roxo)
 
-## O que já é possível testar nesta versão (Prioridade 4)
+## O que já é possível testar nesta versão (Prioridade 5)
 
 - **execução real de jogos** — catálogo abre jogos num runner iframe completo
 - 3 jogos seed funcionais: Quiz de Múltipla Escolha, Arrastar e Soltar, Desafio de Contas
@@ -14,10 +14,11 @@ Plataforma local-first de jogos educativos para laboratórios de informática es
 - painel admin com publicação/despublicação e botão de teste direto
 - catálogo com jogos base + jogos importados persistidos em SQLite
 - fluxo de sala por código funcional com criação, seleção de jogo e início de atividade pelo professor
-- entrada de aluno por código com estado de espera e abertura automática do jogo quando a sala estiver ativa
+- entrada de aluno por código com identificação mínima (nome/apelido opcional) e fallback anônimo
 - atividades/sessões persistidas com status, timestamps e vínculo com sala/jogo
 - registro persistente de eventos do runner/jogo (`game_started`, `question_answered`, `score_updated`, `game_finished`)
-- histórico básico de atividades no painel do professor e no admin com resumo de eventos/score
+- participantes persistidos por sala/atividade com status, última atividade e última pontuação
+- histórico/resultado por participante no painel do professor
 
 ## Serviços
 
@@ -89,12 +90,12 @@ http://localhost:8000/health
 - Clique em **▶ Testar** no card do jogo — abre o runner diretamente
 - Ou volte ao catálogo, selecione o ano/disciplina correto e clique em **Jogar Agora**
 
-### 7. Fluxo sala por código (Prioridade 3)
+### 7. Fluxo sala por código com participantes (Prioridade 5)
 1. Acesse `http://localhost:3000/professor`
 2. Crie uma sala (nome + ano/disciplina opcional + jogo com modo `sala_codigo`)
 3. Na lista de salas, confirme status e clique em **Iniciar atividade**
 4. Em outro navegador, acesse `http://localhost:3000/entrar-sala`
-5. Informe o código e nome do aluno
+5. Informe o código e nome/apelido (opcional) do aluno
 6. Se a sala estiver em `waiting`, a tela mostra estado de espera amigável
 7. Ao ficar `active`, o aluno pode clicar em **Entrar no jogo da sala**
 
@@ -107,10 +108,11 @@ http://localhost:8000/health
 - O runner envia contexto inicial (`platform_context`) com:
   - `mode`, `origin`
   - `room_code`, `room_id`, `room_name` (quando aplicável)
+  - `participant.id`, `participant.display_name`, `participant.source` (quando aplicável)
   - `grade`, `subject` (quando aplicável)
   - `activity.id`, `activity.status`, `activity.origin`
 
-### 9. Validar histórico e persistência da Prioridade 4
+### 9. Validar histórico, participantes e persistência da Prioridade 5
 1. Após iniciar a atividade e jogar alguns segundos, volte para `http://localhost:3000/professor`
 2. Confira o bloco **🕘 Histórico recente de atividades**
 3. Valide:
@@ -119,18 +121,22 @@ http://localhost:8000/health
    - horário de início/fim
    - quantidade de eventos
    - última pontuação conhecida
+   - participantes com status (`joined`, `active`, `finished`) e score individual
 4. Em `http://localhost:3000/admin`, confira a seção **🧾 Histórico recente de atividades**
 5. Opcionalmente, abra `http://localhost:8000/docs` e consulte:
    - `GET /api/activities`
    - `GET /api/activities/{activity_id}`
+   - `GET /api/activities/{activity_id}/participants`
+   - `GET /api/activities/participants/list`
    - `POST /api/activities/ensure`
    - `POST /api/activities/{activity_id}/events`
 
-## Conceitos da Prioridade 4
+## Conceitos da Prioridade 5
 
 - **Sala**: agrupador pedagógico por código, criado pelo professor, com jogo selecionado e estado de turma (`waiting`, `active`, `finished`).
 - **Atividade / sessão**: registro persistido de uma execução pedagógica vinculada a um jogo e, quando aplicável, a uma sala. Guarda origem, status, timestamps e resumo do uso.
 - **Execução do jogo**: abertura concreta do runner/iframe por professor ou aluno usando o contexto de uma atividade. Uma execução envia eventos para a atividade atual; no futuro isso permite acompanhamento quase em tempo real sem trocar o modelo base.
+- **Participante**: entrada de aluno/dispositivo na sala/atividade. É separado da futura lista oficial de alunos (roster) e guarda identificação mínima, status e resultado da participação.
 
 ## Geração de pacote `.edugame` de exemplo
 

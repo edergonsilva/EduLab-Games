@@ -30,6 +30,11 @@
 
 .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
 .form-label { font-weight: 700; font-size: 0.9rem; color: var(--color-text); }
+.join-hint {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
 
 .code-input {
   font-size: 2rem;

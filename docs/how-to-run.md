@@ -41,7 +41,7 @@ URLs principais:
 ### Com Docker
 Tudo fica no volume `edulab-data`, montado em `/app/data_storage` no container do backend.
 
-## 4. Smoke test manual sugerido (Prioridade 4)
+## 4. Smoke test manual sugerido (Prioridade 5)
 
 1. **Subir containers**
    - `docker compose up --build`
@@ -60,19 +60,19 @@ Tudo fica no volume `edulab-data`, montado em `/app/data_storage` no container d
 6. **Abrir entrada por código em outro navegador**
    - `http://localhost:3000/entrar-sala`
 7. **Informar código da sala**
-   - preencher código + nome do aluno e entrar
+   - preencher código + nome/apelido (opcional) e entrar
 8. **Validar estado de espera ou abertura do jogo**
    - se a sala estiver `waiting`, a tela mostra espera amigável
    - se estiver `active`, o botão `Entrar no jogo da sala` abre o runner correto
 9. **Validar contexto enviado ao jogo**
    - no runner, conferir logs no console com `platform_context`
-   - validar presença de `mode`, `origin`, `activity.id` e dados da sala (`room_code`, `room_id`, `room_name`)
+   - validar presença de `mode`, `origin`, `activity.id`, dados da sala (`room_code`, `room_id`, `room_name`) e `participant.id/display_name`
 10. **Interagir com o jogo**
    - gerar pelo menos `game_started`, `score_updated` e `game_finished`
 11. **Consultar histórico**
    - voltar ao painel do professor
    - conferir o bloco `Histórico recente de atividades`
-   - validar status, timestamps, contagem de eventos e score final/último score
+   - validar status, timestamps, contagem de eventos, score final/último score e participantes por atividade
 12. **Consultar API**
    - abrir `http://localhost:8000/docs`
    - testar `GET /api/activities`
@@ -112,6 +112,8 @@ O Vite faz proxy de `/api` e `/health` para `http://localhost:8000`.
 - `GET /api/rooms/{code}`
 - `GET /api/activities`
 - `GET /api/activities/{activity_id}`
+- `GET /api/activities/{activity_id}/participants`
+- `GET /api/activities/participants/list`
 - `POST /api/activities/ensure`
 - `POST /api/activities/{activity_id}/events`
 

@@ -18,6 +18,9 @@ type PlatformContext = {
   room_code?: string
   room_id?: string
   room_name?: string
+  participant_id?: string
+  display_name?: string
+  participant_source?: 'manual' | 'anonymous' | 'teacher-test' | 'runner-event'
   grade?: number
   subject?: string
   origin: string
@@ -67,6 +70,9 @@ export default function GamePlayer() {
       room_code: searchParams.get('room_code') ?? undefined,
       room_id: searchParams.get('room_id') ?? undefined,
       room_name: searchParams.get('room_name') ?? undefined,
+      participant_id: searchParams.get('participant_id') ?? undefined,
+      display_name: searchParams.get('display_name') ?? undefined,
+      participant_source: (searchParams.get('participant_source') as PlatformContext['participant_source']) ?? undefined,
       grade: parseOptionalNumber(searchParams.get('grade')),
       subject: searchParams.get('subject') ?? undefined,
       origin: searchParams.get('origin') ?? 'catalog',
@@ -117,6 +123,13 @@ export default function GamePlayer() {
             mode: context.mode,
             origin: context.origin,
             room_code: context.room_code,
+            participant_id: context.participant_id,
+            display_name: context.display_name,
+            source: context.participant_source,
+          }, {
+            id: context.participant_id,
+            display_name: context.display_name,
+            source: context.participant_source,
           })
           if (!cancelled) setActivity(updated)
         }
@@ -133,15 +146,30 @@ export default function GamePlayer() {
     return () => {
       cancelled = true
     }
-  }, [activity?.id, context.grade, context.mode, context.origin, context.room_code, context.room_id, context.room_name, context.subject, contextError, game, gameId])
+  }, [
+    activity?.id,
+    context.display_name,
+    context.grade,
+    context.mode,
+    context.origin,
+    context.participant_id,
+    context.participant_source,
+    context.room_code,
+    context.room_id,
+    context.room_name,
+    context.subject,
+    contextError,
+    game,
+    gameId,
+  ])
 
   const postPlatformContext = useCallback(() => {
     if (!iframeRef.current?.contentWindow || !game) return
     iframeRef.current.contentWindow.postMessage(
       {
         type: 'platform_context',
-        // schema 1.2 extends the existing runner context with the persisted activity block.
-        schema_version: '1.2',
+        // schema 1.3 extends the runner context with participant identification.
+        schema_version: '1.3',
         game: {
           id: game.id,
           name: game.name,
@@ -153,6 +181,13 @@ export default function GamePlayer() {
               id: activity.id,
               status: activity.status,
               origin: activity.origin,
+            }
+          : null,
+        participant: context.participant_id
+          ? {
+              id: context.participant_id,
+              display_name: context.display_name,
+              source: context.participant_source ?? 'manual',
             }
           : null,
         context,
@@ -228,7 +263,19 @@ export default function GamePlayer() {
       }
 
       if (activity && PERSISTED_EVENT_TYPES.includes(normalizedType as PersistedEventType)) {
-        void recordActivityEvent(activity.id, normalizedType as PersistedEventType, normalizedMessage)
+        void recordActivityEvent(activity.id, normalizedType as PersistedEventType, normalizedMessage, {
+          id: context.participant_id,
+          display_name: context.display_name,
+          source: context.participant_source,
+        })
+          .then(updated => setActivity(updated))
+          .catch(error => console.error('[EduLab Runner] failed to persist game event', normalizedType, error))
+      } else if (activity && normalizedType === 'ready') {
+        void recordActivityEvent(activity.id, 'runner_opened', normalizedMessage, {
+          id: context.participant_id,
+          display_name: context.display_name,
+          source: context.participant_source,
+        })
           .then(updated => setActivity(updated))
           .catch(error => console.error('[EduLab Runner] failed to persist game event', normalizedType, error))
       }
@@ -239,7 +286,7 @@ export default function GamePlayer() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [activity, gameFinished, gameStarted, score])
+  }, [activity, context.display_name, context.participant_id, context.participant_source, gameFinished, gameStarted, score])
 
   // Send initial context to the game once iframe loads
   function handleIframeLoad() {
