@@ -88,6 +88,23 @@
   font-size: 0.85rem;
 }
 
+.participants-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.participant-pill {
+  background: #F5F3FF;
+  border: 1px solid #DDD6FE;
+  color: #4C1D95;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+}
+
 .room-list-side {
   display: flex;
   flex-direction: column;

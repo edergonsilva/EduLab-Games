@@ -20,6 +20,9 @@ export default function JoinRoom() {
   const [error, setError] = useState('')
   const [joinedRoomCode, setJoinedRoomCode] = useState<string | null>(null)
   const [joinedRoomSnapshot, setJoinedRoomSnapshot] = useState<Room | null>(null)
+  const [participantId, setParticipantId] = useState<string | null>(null)
+  const [participantName, setParticipantName] = useState<string | null>(null)
+  const [participantSource, setParticipantSource] = useState<'manual' | 'anonymous' | 'teacher-test' | 'runner-event'>('manual')
 
   const joinedCode = joinedRoomCode ?? null
   const { data: roomLive } = useQuery<Room>({
@@ -39,16 +42,21 @@ export default function JoinRoom() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!code.trim() || !name.trim()) {
-      setError('Preencha o código da sala e o seu nome.')
+    if (!code.trim()) {
+      setError('Preencha o código da sala.')
       return
     }
     setLoading(true)
     setError('')
     try {
-      const roomResponse = await joinRoom(code.trim(), name.trim())
-      setJoinedRoomSnapshot(roomResponse)
-      setJoinedRoomCode(roomResponse.code)
+      const normalizedName = name.trim()
+      const source = normalizedName ? 'manual' : 'anonymous'
+      const response = await joinRoom(code.trim(), normalizedName || undefined, source)
+      setJoinedRoomSnapshot(response.room)
+      setJoinedRoomCode(response.room.code)
+      setParticipantId(response.participant.id)
+      setParticipantName(response.participant.display_name)
+      setParticipantSource(response.participant.source)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(msg ?? 'Sala não encontrada. Verifique o código e tente novamente.')
@@ -66,6 +74,9 @@ export default function JoinRoom() {
       room_name: room.name,
       origin: 'room',
     })
+    if (participantId) params.set('participant_id', participantId)
+    if (participantName) params.set('display_name', participantName)
+    if (participantSource) params.set('participant_source', participantSource)
     if (room.grade) params.set('grade', String(room.grade))
     if (room.subject) params.set('subject', room.subject)
     navigate(`/jogar/${room.selected_game_id}?${params.toString()}`)
@@ -84,6 +95,7 @@ export default function JoinRoom() {
             <p><strong>Ano:</strong> {room.grade ? `${room.grade}º ano` : 'Todos'}</p>
             <p><strong>Disciplina:</strong> {room.subject ?? 'Todas'}</p>
             <p><strong>Jogadores conectados:</strong> {room.players.length}</p>
+            <p><strong>Sua identificação:</strong> {participantName ?? (name.trim() || 'Anônimo')}</p>
             <p><strong>Jogo:</strong> {room.selected_game_id ?? 'Ainda não selecionado'}</p>
           </div>
 
@@ -136,11 +148,14 @@ export default function JoinRoom() {
               id="name"
               type="text"
               className="input"
-              placeholder="Ex: Maria"
+              placeholder="Ex: Maria (opcional)"
               value={name}
               onChange={e => setName(e.target.value)}
               maxLength={40}
             />
+            <small className="join-hint">
+              Opcional: se você deixar vazio, entraremos como participante anônimo.
+            </small>
           </div>
 
           {error && <p className="join-error">{error}</p>}

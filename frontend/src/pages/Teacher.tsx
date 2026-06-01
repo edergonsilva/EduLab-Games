@@ -7,6 +7,7 @@ import {
   getActivities,
   getGames,
   getGrades,
+  getParticipants,
   getRooms,
   getSubjects,
   startRoom,
@@ -14,6 +15,7 @@ import {
   type Activity,
   type Game,
   type Grade,
+  type Participant,
   type Room,
   type Subject,
 } from '../services/api'
@@ -33,6 +35,12 @@ const ACTIVITY_STATUS_LABEL: Record<string, string> = {
 }
 const ROOM_POLL_INTERVAL = 3000
 const ACTIVITY_ID_DISPLAY_LENGTH = 8
+const PARTICIPANT_STATUS_LABEL: Record<string, string> = {
+  'joined': 'Entrou',
+  'active': 'Ativo',
+  'finished': 'Finalizou',
+  'left': 'Saiu',
+}
 
 function formatTimestamp(value?: number | null) {
   if (!value) return '—'
@@ -79,6 +87,11 @@ export default function Teacher() {
     queryFn: () => getActivities(12),
     refetchInterval: ROOM_POLL_INTERVAL,
   })
+  const { data: participants = [] } = useQuery<Participant[]>({
+    queryKey: ['participants'],
+    queryFn: () => getParticipants({ limit: 400 }),
+    refetchInterval: ROOM_POLL_INTERVAL,
+  })
 
   const roomGamesById = useMemo(
     () => Object.fromEntries(allRoomGames.map(game => [game.id, game])),
@@ -94,6 +107,26 @@ export default function Teacher() {
       }, {}),
     [activities],
   )
+  const participantsByRoomCode = useMemo(
+    () =>
+      participants.reduce<Record<string, Participant[]>>((accumulator, participant) => {
+        if (!participant.room_code) return accumulator
+        if (!accumulator[participant.room_code]) accumulator[participant.room_code] = []
+        accumulator[participant.room_code].push(participant)
+        return accumulator
+      }, {}),
+    [participants],
+  )
+  const participantsByActivityId = useMemo(
+    () =>
+      participants.reduce<Record<string, Participant[]>>((accumulator, participant) => {
+        if (!participant.activity_id) return accumulator
+        if (!accumulator[participant.activity_id]) accumulator[participant.activity_id] = []
+        accumulator[participant.activity_id].push(participant)
+        return accumulator
+      }, {}),
+    [participants],
+  )
 
   const effectiveGameId = roomGamesFiltered.some(game => game.id === gameId)
     ? gameId
@@ -102,6 +135,7 @@ export default function Teacher() {
   const refreshRooms = async () => {
     await queryClient.invalidateQueries({ queryKey: ['rooms'] })
     await queryClient.invalidateQueries({ queryKey: ['activities'] })
+    await queryClient.invalidateQueries({ queryKey: ['participants'] })
   }
 
   const createRoomMutation = useMutation({
@@ -274,6 +308,8 @@ export default function Teacher() {
                 const canStart = !!selectedRoomGame && room.status === 'waiting'
                 const gameName = getRoomGameLabel(room)
                 const latestActivity = activitiesByRoomCode[room.code]
+                const roomParticipants = participantsByRoomCode[room.code] ?? []
+                const finishedCount = roomParticipants.filter(participant => participant.status === 'finished').length
 
                 return (
                   <div key={room.code} className="room-list-item">
@@ -286,6 +322,20 @@ export default function Teacher() {
                       {latestActivity && (
                         <div className="room-list-meta">
                           Atividade {latestActivity.id.slice(-ACTIVITY_ID_DISPLAY_LENGTH)} • {latestActivity.event_count} evento(s) • última pontuação {latestActivity.last_score ?? '—'}
+                        </div>
+                      )}
+                      {roomParticipants.length > 0 && (
+                        <div className="room-list-meta">
+                          Participantes: {roomParticipants.length} • Finalizaram: {finishedCount}
+                        </div>
+                      )}
+                      {roomParticipants.length > 0 && (
+                        <div className="participants-inline">
+                          {roomParticipants.slice(0, 8).map(participant => (
+                            <span key={participant.id} className="participant-pill">
+                              {participant.display_name} • {PARTICIPANT_STATUS_LABEL[participant.status] ?? participant.status} • {participant.last_score ?? '—'}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -364,6 +414,18 @@ export default function Teacher() {
                     <div className="room-list-meta">
                       Último evento: {formatTimestamp(activity.last_event_at)} • Última pontuação: {activity.last_score ?? '—'}
                     </div>
+                    <div className="room-list-meta">
+                      Participantes: {(participantsByActivityId[activity.id] ?? []).length}
+                    </div>
+                    {(participantsByActivityId[activity.id] ?? []).length > 0 && (
+                      <div className="participants-inline">
+                        {(participantsByActivityId[activity.id] ?? []).slice(0, 8).map(participant => (
+                          <span key={participant.id} className="participant-pill">
+                            {participant.display_name} • {PARTICIPANT_STATUS_LABEL[participant.status] ?? participant.status} • {participant.last_score ?? '—'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="room-list-side">
                     <span className="badge badge-purple">{ACTIVITY_STATUS_LABEL[activity.status] ?? activity.status}</span>

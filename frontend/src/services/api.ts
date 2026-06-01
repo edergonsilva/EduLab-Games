@@ -60,6 +60,28 @@ export interface Room {
   finished_at?: number | null
 }
 
+export interface Participant {
+  id: string
+  room_id?: string | null
+  room_code?: string | null
+  activity_id?: string | null
+  display_name: string
+  source: 'manual' | 'anonymous' | 'teacher-test' | 'runner-event'
+  status: 'joined' | 'active' | 'finished' | 'left'
+  joined_at: number
+  last_seen_at: number
+  started_at?: number | null
+  finished_at?: number | null
+  last_score?: number | null
+  roster_student_id?: string | null
+  roster_match_status: 'unmatched' | 'pending' | 'matched'
+}
+
+export interface JoinRoomResponse {
+  room: Room
+  participant: Participant
+}
+
 export interface Activity {
   id: string
   room_id?: string | null
@@ -89,10 +111,13 @@ export interface ActivityDetail extends Activity {
     room_id?: string | null
     room_code?: string | null
     game_id: string
+    participant_id?: string | null
+    participant_display_name?: string | null
     event_type: string
     payload: Record<string, unknown>
     created_at: number
   }>
+  participant_results: Participant[]
 }
 
 export interface HealthResponse {
@@ -156,8 +181,8 @@ export const getRoom = (code: string) =>
 export const getRooms = () =>
   api.get<Room[]>('/rooms').then(r => r.data)
 
-export const joinRoom = (code: string, player_name: string) =>
-  api.post<Room>(`/rooms/${code}/join`, { player_name }).then(r => r.data)
+export const joinRoom = (code: string, player_name?: string, source: 'manual' | 'anonymous' | 'teacher-test' = 'manual') =>
+  api.post<JoinRoomResponse>(`/rooms/${code}/join`, { player_name, source }).then(r => r.data)
 
 export interface UpdateRoomPayload {
   name?: string
@@ -199,7 +224,17 @@ export const recordActivityEvent = (
   activityId: string,
   eventType: 'game_started' | 'question_answered' | 'score_updated' | 'game_finished' | 'pause' | 'runner_opened',
   payload: Record<string, unknown>,
-) => api.post<Activity>(`/activities/${activityId}/events`, { event_type: eventType, payload }).then(r => r.data)
+  participant?: { id?: string; display_name?: string; source?: 'manual' | 'anonymous' | 'teacher-test' | 'runner-event' },
+) => api.post<Activity>(`/activities/${activityId}/events`, {
+  event_type: eventType,
+  payload,
+  participant_id: participant?.id,
+  display_name: participant?.display_name,
+  source: participant?.source,
+}).then(r => r.data)
+
+export const getParticipants = (params?: { room_code?: string; activity_id?: string; limit?: number }) =>
+  api.get<Participant[]>('/activities/participants/list', { params }).then(r => r.data)
 
 export const adminLogin = (password: string) =>
   api.post('/admin/login', { password }).then(r => r.data)

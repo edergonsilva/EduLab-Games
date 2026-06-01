@@ -12,6 +12,7 @@ from uuid import uuid4
 from app.config import settings
 from app.models.activity import Activity, ActivityEvent
 from app.models.game import GameManifest
+from app.models.participant import Participant
 from app.models.room import Room
 
 
@@ -23,6 +24,8 @@ SEED_GAMES_SOURCE_DIR = settings.data_dir / "seed_games"
 SEED_GAMES_STATIC_DIR = STATIC_DIR / "games"
 ACTIVITY_ID_PREFIX = "activity_"
 ACTIVITY_EVENT_ID_PREFIX = "event_"
+PARTICIPANT_ID_PREFIX = "participant_"
+MAX_PARTICIPANT_DISPLAY_NAME_LENGTH = 60
 
 
 @contextmanager
@@ -122,14 +125,38 @@ def initialize_storage() -> None:
                 room_id TEXT,
                 room_code TEXT,
                 game_id TEXT NOT NULL,
+                participant_id TEXT,
+                participant_display_name TEXT,
                 event_type TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 created_at REAL NOT NULL
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS participants (
+                id TEXT PRIMARY KEY,
+                room_id TEXT,
+                room_code TEXT,
+                activity_id TEXT,
+                display_name TEXT NOT NULL,
+                source TEXT NOT NULL,
+                status TEXT NOT NULL,
+                joined_at REAL NOT NULL,
+                last_seen_at REAL NOT NULL,
+                started_at REAL,
+                finished_at REAL,
+                last_score REAL,
+                roster_student_id TEXT,
+                roster_match_status TEXT NOT NULL DEFAULT 'unmatched'
+            )
+            """
+        )
         _ensure_rooms_schema(connection)
         _ensure_activities_schema(connection)
+        _ensure_activity_events_schema(connection)
+        _ensure_participants_schema(connection)
 
 
 def _ensure_rooms_schema(connection: sqlite3.Connection) -> None:
@@ -184,6 +211,67 @@ def _ensure_activities_schema(connection: sqlite3.Connection) -> None:
     for column_name, statement in alter_statements.items():
         if column_name not in columns:
             connection.execute(statement)
+
+
+def _ensure_activity_events_schema(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(activity_events)").fetchall()
+    }
+    alter_statements = {
+        "participant_id": "ALTER TABLE activity_events ADD COLUMN participant_id TEXT",
+        "participant_display_name": "ALTER TABLE activity_events ADD COLUMN participant_display_name TEXT",
+    }
+    for column_name, statement in alter_statements.items():
+        if column_name not in columns:
+            connection.execute(statement)
+
+
+def _ensure_participants_schema(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(participants)").fetchall()
+    }
+    alter_statements = {
+        "room_id": "ALTER TABLE participants ADD COLUMN room_id TEXT",
+        "room_code": "ALTER TABLE participants ADD COLUMN room_code TEXT",
+        "activity_id": "ALTER TABLE participants ADD COLUMN activity_id TEXT",
+        "display_name": "ALTER TABLE participants ADD COLUMN display_name TEXT",
+        "source": "ALTER TABLE participants ADD COLUMN source TEXT",
+        "status": "ALTER TABLE participants ADD COLUMN status TEXT",
+        "joined_at": "ALTER TABLE participants ADD COLUMN joined_at REAL",
+        "last_seen_at": "ALTER TABLE participants ADD COLUMN last_seen_at REAL",
+        "started_at": "ALTER TABLE participants ADD COLUMN started_at REAL",
+        "finished_at": "ALTER TABLE participants ADD COLUMN finished_at REAL",
+        "last_score": "ALTER TABLE participants ADD COLUMN last_score REAL",
+        "roster_student_id": "ALTER TABLE participants ADD COLUMN roster_student_id TEXT",
+        "roster_match_status": "ALTER TABLE participants ADD COLUMN roster_match_status TEXT",
+    }
+    for column_name, statement in alter_statements.items():
+        if column_name not in columns:
+            connection.execute(statement)
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(participants)").fetchall()
+    }
+    now = time.time()
+    if "display_name" in columns:
+        connection.execute(
+            "UPDATE participants SET display_name = COALESCE(NULLIF(display_name, ''), 'Participante')"
+        )
+    if "source" in columns:
+        connection.execute("UPDATE participants SET source = COALESCE(NULLIF(source, ''), 'manual')")
+    if "status" in columns:
+        connection.execute("UPDATE participants SET status = COALESCE(NULLIF(status, ''), 'joined')")
+    if "joined_at" in columns:
+        connection.execute("UPDATE participants SET joined_at = COALESCE(joined_at, ?)", (now,))
+    if "last_seen_at" in columns:
+        connection.execute("UPDATE participants SET last_seen_at = COALESCE(last_seen_at, joined_at, ?)", (now,))
+    if "roster_match_status" in columns:
+        connection.execute(
+            "UPDATE participants SET roster_match_status = COALESCE(NULLIF(roster_match_status, ''), 'unmatched')"
+        )
 
 
 def _safe_slug(value: str) -> str:
@@ -479,6 +567,228 @@ def save_room(room: Room) -> Room:
     return room
 
 
+def _participant_from_row(row: sqlite3.Row) -> Participant:
+    return Participant(
+        id=row["id"],
+        room_id=row["room_id"],
+        room_code=row["room_code"],
+        activity_id=row["activity_id"],
+        display_name=row["display_name"] or "Participante",
+        source=row["source"] or "manual",
+        status=row["status"] or "joined",
+        joined_at=row["joined_at"],
+        last_seen_at=row["last_seen_at"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        last_score=row["last_score"],
+        roster_student_id=row["roster_student_id"] if "roster_student_id" in row.keys() else None,
+        roster_match_status=row["roster_match_status"] if "roster_match_status" in row.keys() else "unmatched",
+    )
+
+
+def _normalize_participant_display_name(display_name: str | None) -> tuple[str, str]:
+    normalized = (display_name or "").strip()
+    if normalized:
+        return normalized[:MAX_PARTICIPANT_DISPLAY_NAME_LENGTH], "manual"
+    return f"Anônimo-{secrets.token_hex(2)}", "anonymous"
+
+
+def list_participants(
+    *,
+    room_code: str | None = None,
+    activity_id: str | None = None,
+    limit: int = 200,
+) -> list[Participant]:
+    where_clauses: list[str] = []
+    params: list[str | int] = []
+    if room_code:
+        where_clauses.append("room_code = ?")
+        params.append(room_code)
+    if activity_id:
+        where_clauses.append("activity_id = ?")
+        params.append(activity_id)
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT * FROM participants
+            {where_sql}
+            ORDER BY joined_at ASC
+            LIMIT ?
+            """,
+            (*params, limit),
+        ).fetchall()
+    return [_participant_from_row(row) for row in rows]
+
+
+def get_participant(participant_id: str) -> Participant | None:
+    with get_connection() as connection:
+        row = connection.execute("SELECT * FROM participants WHERE id = ?", (participant_id,)).fetchone()
+    if row is None:
+        return None
+    return _participant_from_row(row)
+
+
+def save_participant(participant: Participant) -> Participant:
+    participant.last_seen_at = time.time()
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO participants (
+                id, room_id, room_code, activity_id, display_name, source, status, joined_at,
+                last_seen_at, started_at, finished_at, last_score, roster_student_id, roster_match_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                room_id = excluded.room_id,
+                room_code = excluded.room_code,
+                activity_id = excluded.activity_id,
+                display_name = excluded.display_name,
+                source = excluded.source,
+                status = excluded.status,
+                joined_at = excluded.joined_at,
+                last_seen_at = excluded.last_seen_at,
+                started_at = excluded.started_at,
+                finished_at = excluded.finished_at,
+                last_score = excluded.last_score,
+                roster_student_id = excluded.roster_student_id,
+                roster_match_status = excluded.roster_match_status
+            """,
+            (
+                participant.id,
+                participant.room_id,
+                participant.room_code,
+                participant.activity_id,
+                participant.display_name,
+                participant.source,
+                participant.status,
+                participant.joined_at,
+                participant.last_seen_at,
+                participant.started_at,
+                participant.finished_at,
+                participant.last_score,
+                participant.roster_student_id,
+                participant.roster_match_status,
+            ),
+        )
+    return participant
+
+
+def create_or_update_participant(
+    *,
+    room: Room,
+    display_name: str | None,
+    source: str = "manual",
+    activity_id: str | None = None,
+) -> Participant:
+    normalized_name, normalized_source = _normalize_participant_display_name(display_name)
+    resolved_source = source or normalized_source
+    timestamp = time.time()
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT * FROM participants
+            WHERE room_code = ?
+              AND display_name = ?
+              AND (activity_id = ? OR (? IS NULL AND activity_id IS NULL))
+            ORDER BY last_seen_at DESC
+            LIMIT 1
+            """,
+            (room.code, normalized_name, activity_id, activity_id),
+        ).fetchone()
+
+    if row is not None:
+        participant = _participant_from_row(row)
+        participant.last_seen_at = timestamp
+        participant.status = "joined" if participant.status == "left" else participant.status
+        participant.source = resolved_source if participant.source == "anonymous" else participant.source
+        if activity_id and not participant.activity_id:
+            participant.activity_id = activity_id
+        return save_participant(participant)
+
+    participant = Participant(
+        id=f"{PARTICIPANT_ID_PREFIX}{uuid4().hex}",
+        room_id=room.id,
+        room_code=room.code,
+        activity_id=activity_id,
+        display_name=normalized_name,
+        source=resolved_source,
+        status="joined",
+        joined_at=timestamp,
+        last_seen_at=timestamp,
+    )
+    return save_participant(participant)
+
+
+def attach_room_participants_to_activity(room_code: str, activity_id: str) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE participants
+            SET activity_id = ?,
+                status = CASE WHEN status = 'left' THEN status ELSE 'joined' END
+            WHERE room_code = ?
+              AND activity_id IS NULL
+            """,
+            (activity_id, room_code),
+        )
+
+
+def update_participant_progress(
+    participant_id: str,
+    *,
+    activity_id: str | None,
+    event_type: str,
+    payload: dict | None = None,
+    fallback_display_name: str | None = None,
+    fallback_source: str | None = None,
+) -> Participant | None:
+    participant = get_participant(participant_id)
+    timestamp = time.time()
+    if participant is None:
+        if not activity_id:
+            return None
+        activity = get_activity(activity_id)
+        if activity is None:
+            return None
+        normalized_name, normalized_source = _normalize_participant_display_name(fallback_display_name)
+        participant = Participant(
+            id=participant_id,
+            room_id=activity.room_id,
+            room_code=activity.room_code,
+            activity_id=activity_id,
+            display_name=normalized_name,
+            source=fallback_source or normalized_source or "runner-event",
+            status="joined",
+            joined_at=timestamp,
+            last_seen_at=timestamp,
+        )
+
+    if activity_id and not participant.activity_id:
+        participant.activity_id = activity_id
+    participant.last_seen_at = timestamp
+    if fallback_display_name and participant.display_name.startswith("Anônimo-"):
+        participant.display_name = fallback_display_name.strip()[:MAX_PARTICIPANT_DISPLAY_NAME_LENGTH]
+    if fallback_source:
+        participant.source = fallback_source
+
+    payload = payload or {}
+    if event_type in {"game_started", "question_answered", "score_updated", "game_finished"}:
+        participant.status = "active"
+        if participant.started_at is None:
+            participant.started_at = timestamp
+
+    score = payload.get("score")
+    if isinstance(score, (int, float)):
+        participant.last_score = float(score)
+
+    if event_type == "game_finished":
+        participant.status = "finished"
+        participant.finished_at = timestamp
+
+    return save_participant(participant)
+
+
 def _activity_from_row(row: sqlite3.Row) -> Activity:
     game_name = row["game_name"] if "game_name" in row else None
     return Activity(
@@ -511,6 +821,8 @@ def _activity_event_from_row(row: sqlite3.Row) -> ActivityEvent:
         room_id=row["room_id"],
         room_code=row["room_code"],
         game_id=row["game_id"],
+        participant_id=row["participant_id"] if "participant_id" in row.keys() else None,
+        participant_display_name=row["participant_display_name"] if "participant_display_name" in row.keys() else None,
         event_type=row["event_type"],
         payload=json.loads(row["payload_json"]),
         created_at=row["created_at"],
@@ -620,6 +932,10 @@ def list_activity_events(activity_id: str, limit: int = 25) -> list[ActivityEven
     return [_activity_event_from_row(row) for row in rows]
 
 
+def list_activity_participants(activity_id: str, limit: int = 200) -> list[Participant]:
+    return list_participants(activity_id=activity_id, limit=limit)
+
+
 def save_activity(activity: Activity) -> Activity:
     activity.updated_at = time.time()
     with get_connection() as connection:
@@ -690,6 +1006,7 @@ def ensure_activity(
         if room is not None and room.current_activity_id:
             existing = get_activity(room.current_activity_id)
             if existing is not None:
+                attach_room_participants_to_activity(room.code, existing.id)
                 return existing
         status = "active" if room and room.status == "active" else "waiting"
         activity = create_activity(
@@ -707,6 +1024,7 @@ def ensure_activity(
         if room is not None:
             room.current_activity_id = activity.id
             save_room(room)
+            attach_room_participants_to_activity(room.code, activity.id)
         return activity
 
     return create_activity(
@@ -731,18 +1049,38 @@ def finish_activity(activity_id: str, *, status: str = "finished", finished_at: 
     return save_activity(activity)
 
 
-def record_activity_event(activity_id: str, *, event_type: str, payload: dict | None = None) -> Activity | None:
+def record_activity_event(
+    activity_id: str,
+    *,
+    event_type: str,
+    payload: dict | None = None,
+    participant_id: str | None = None,
+    display_name: str | None = None,
+    source: str | None = None,
+) -> Activity | None:
     activity = get_activity(activity_id)
     if activity is None:
         return None
 
     timestamp = time.time()
+    participant = None
+    if participant_id:
+        participant = update_participant_progress(
+            participant_id,
+            activity_id=activity.id,
+            event_type=event_type,
+            payload=payload,
+            fallback_display_name=display_name,
+            fallback_source=source,
+        )
     event = ActivityEvent(
         id=f"{ACTIVITY_EVENT_ID_PREFIX}{uuid4().hex}",
         activity_id=activity.id,
         room_id=activity.room_id,
         room_code=activity.room_code,
         game_id=activity.game_id,
+        participant_id=participant.id if participant else participant_id,
+        participant_display_name=participant.display_name if participant else display_name,
         event_type=event_type,
         payload=payload or {},
         created_at=timestamp,
@@ -752,8 +1090,9 @@ def record_activity_event(activity_id: str, *, event_type: str, payload: dict | 
         connection.execute(
             """
             INSERT INTO activity_events (
-                id, activity_id, room_id, room_code, game_id, event_type, payload_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                id, activity_id, room_id, room_code, game_id, participant_id, participant_display_name,
+                event_type, payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event.id,
@@ -761,6 +1100,8 @@ def record_activity_event(activity_id: str, *, event_type: str, payload: dict | 
                 event.room_id,
                 event.room_code,
                 event.game_id,
+                event.participant_id,
+                event.participant_display_name,
                 event.event_type,
                 json.dumps(event.payload),
                 event.created_at,

@@ -3,6 +3,8 @@ import time
 
 from pydantic import BaseModel, Field
 
+from app.models.participant import Participant
+
 
 class Room(BaseModel):
     id: str
@@ -35,7 +37,13 @@ class CreateRoomRequest(BaseModel):
 
 
 class JoinRoomRequest(BaseModel):
-    player_name: str
+    player_name: Optional[str] = Field(default=None, max_length=60)
+    source: Literal["manual", "anonymous", "teacher-test"] = "manual"
+
+
+class JoinRoomResponse(BaseModel):
+    room: Room
+    participant: Participant
 
 
 class UpdateRoomRequest(BaseModel):
