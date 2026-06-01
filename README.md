@@ -75,22 +75,29 @@ http://localhost:8000/health
 5. O runner abre em tela cheia com o jogo no iframe
 6. Jogue normalmente — os eventos aparecem no log expansível ao final da página
 
-### 4. Importar um jogo `.edugame`
+### 4. Criar + empacotar um jogo `.edugame`
+
+```bash
+python tools/package_edugame.py examples/quiz-basico --validate-only
+python tools/package_edugame.py examples/quiz-basico --output-dir dist
+```
+
+### 5. Importar um jogo `.edugame`
 1. Acesse `http://localhost:3000/admin`
 2. Faça login com a senha do admin (`edulab@admin` por padrão)
-3. Na seção **Importar Jogo**, selecione um arquivo `.edugame`
+3. Na seção **Importar Jogo**, selecione um arquivo `.edugame` (ex.: `dist/gen_quiz_basico_001-1.0.0.edugame`)
 4. Clique em **Importar pacote** — o feedback de sucesso aparece no painel
 5. O jogo importado aparece na lista com status **test**
 
-### 5. Publicar o jogo importado
+### 6. Publicar o jogo importado
 - Na lista de jogos do admin, clique em **Publicar** no jogo importado
 - O status muda para **published**
 
-### 6. Testar o jogo importado pelo admin
+### 7. Testar o jogo importado pelo admin
 - Clique em **▶ Testar** no card do jogo — abre o runner diretamente
 - Ou volte ao catálogo, selecione o ano/disciplina correto e clique em **Jogar Agora**
 
-### 7. Fluxo sala por código com participantes (Prioridade 5)
+### 8. Fluxo sala por código com participantes (Prioridade 5)
 1. Acesse `http://localhost:3000/professor`
 2. Crie uma sala (nome + ano/disciplina opcional + jogo com modo `sala_codigo`)
 3. Na lista de salas, confirme status e clique em **Iniciar atividade**
@@ -99,7 +106,7 @@ http://localhost:8000/health
 6. Se a sala estiver em `waiting`, a tela mostra estado de espera amigável
 7. Ao ficar `active`, o aluno pode clicar em **Entrar no jogo da sala**
 
-### 8. Validar os eventos/contexto no runner
+### 9. Validar os eventos/contexto no runner
 - No runner (`/jogar/:gameId`), ao jogar, o painel **🔍 Eventos do jogo** (expansível) mostra os eventos recebidos via `postMessage`:
   - `game_started`
   - `question_answered` com resultado e pontuação
@@ -112,7 +119,7 @@ http://localhost:8000/health
   - `grade`, `subject` (quando aplicável)
   - `activity.id`, `activity.status`, `activity.origin`
 
-### 9. Validar histórico, participantes e persistência da Prioridade 5
+### 10. Validar histórico, participantes e persistência da Prioridade 5
 1. Após iniciar a atividade e jogar alguns segundos, volte para `http://localhost:3000/professor`
 2. Confira o bloco **🕘 Histórico recente de atividades**
 3. Valide:
@@ -138,14 +145,27 @@ http://localhost:8000/health
 - **Execução do jogo**: abertura concreta do runner/iframe por professor ou aluno usando o contexto de uma atividade. Uma execução envia eventos para a atividade atual; no futuro isso permite acompanhamento quase em tempo real sem trocar o modelo base.
 - **Participante**: entrada de aluno/dispositivo na sala/atividade. É separado da futura lista oficial de alunos (roster) e guarda identificação mínima, status e resultado da participação.
 
-## Geração de pacote `.edugame` de exemplo
+## Empacotador oficial `.edugame`
+
+O EduLab Games oficializa o arquivo `.edugame` como **um ZIP padronizado** com extensão própria.
+
+- formato real: ZIP
+- extensão adotada pela plataforma: `.edugame`
+- empacotador oficial: `tools/package_edugame.py`
+
+### Exemplo rápido (quiz básico)
 
 ```bash
-cd examples/quiz-basico
-zip -r quiz-basico-v1.edugame .
+python tools/package_edugame.py examples/quiz-basico --output-dir dist
 ```
 
-O arquivo gerado pode ser importado pelo painel admin.
+Também é possível validar sem gerar arquivo:
+
+```bash
+python tools/package_edugame.py examples/quiz-basico --validate-only
+```
+
+O pacote gerado pode ser importado no painel admin (`/admin`).
 
 ## Catálogo e modos de jogo
 
@@ -158,5 +178,6 @@ O arquivo gerado pode ser importado pelo painel admin.
 - [`docs/how-to-run.md`](docs/how-to-run.md) — passo a passo local com Docker e smoke test
 - [`docs/architecture.md`](docs/architecture.md) — visão geral da arquitetura atual
 - [`docs/edugame-spec.md`](docs/edugame-spec.md) — formato dos pacotes `.edugame`
+- [`docs/edugame-packaging.md`](docs/edugame-packaging.md) — empacotador oficial e fluxo criar → empacotar → importar → executar
 - [`frontend/README.md`](frontend/README.md) — frontend React/Vite do EduLab Games
 - [`backend/README.md`](backend/README.md) — backend FastAPI do EduLab Games

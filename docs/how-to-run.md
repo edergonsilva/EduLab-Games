@@ -117,7 +117,18 @@ O Vite faz proxy de `/api` e `/health` para `http://localhost:8000`.
 - `POST /api/activities/ensure`
 - `POST /api/activities/{activity_id}/events`
 
-## 7. Rede local
+## 7. Empacotar jogos `.edugame` (oficial)
+
+Use o empacotador oficial do repositório:
+
+```bash
+python tools/package_edugame.py examples/quiz-basico --validate-only
+python tools/package_edugame.py examples/quiz-basico --output-dir dist
+```
+
+O arquivo gerado em `dist/` pode ser importado no painel admin.
+
+## 8. Rede local
 
 Depois de subir o sistema no computador servidor, descubra o IP local:
 
