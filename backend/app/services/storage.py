@@ -25,6 +25,7 @@ SEED_GAMES_STATIC_DIR = STATIC_DIR / "games"
 ACTIVITY_ID_PREFIX = "activity_"
 ACTIVITY_EVENT_ID_PREFIX = "event_"
 PARTICIPANT_ID_PREFIX = "participant_"
+MAX_PARTICIPANT_DISPLAY_NAME_LENGTH = 60
 
 
 @contextmanager
@@ -588,7 +589,7 @@ def _participant_from_row(row: sqlite3.Row) -> Participant:
 def _normalize_participant_display_name(display_name: str | None) -> tuple[str, str]:
     normalized = (display_name or "").strip()
     if normalized:
-        return normalized[:60], "manual"
+        return normalized[:MAX_PARTICIPANT_DISPLAY_NAME_LENGTH], "manual"
     return f"Anônimo-{secrets.token_hex(2)}", "anonymous"
 
 
@@ -767,7 +768,7 @@ def update_participant_progress(
         participant.activity_id = activity_id
     participant.last_seen_at = timestamp
     if fallback_display_name and participant.display_name.startswith("Anônimo-"):
-        participant.display_name = fallback_display_name.strip()[:60]
+        participant.display_name = fallback_display_name.strip()[:MAX_PARTICIPANT_DISPLAY_NAME_LENGTH]
     if fallback_source:
         participant.source = fallback_source
 

@@ -78,6 +78,14 @@ export default function GamePlayer() {
       origin: searchParams.get('origin') ?? 'catalog',
     }
   }, [searchParams])
+  const participantContext = useMemo(
+    () => ({
+      id: context.participant_id,
+      display_name: context.display_name,
+      source: context.participant_source,
+    }),
+    [context.display_name, context.participant_id, context.participant_source],
+  )
 
   const {
     data: game,
@@ -123,14 +131,10 @@ export default function GamePlayer() {
             mode: context.mode,
             origin: context.origin,
             room_code: context.room_code,
-            participant_id: context.participant_id,
-            display_name: context.display_name,
-            source: context.participant_source,
-          }, {
-            id: context.participant_id,
-            display_name: context.display_name,
-            source: context.participant_source,
-          })
+            participant_id: participantContext.id,
+            display_name: participantContext.display_name,
+            source: participantContext.source,
+          }, participantContext)
           if (!cancelled) setActivity(updated)
         }
       } catch (error) {
@@ -161,6 +165,7 @@ export default function GamePlayer() {
     contextError,
     game,
     gameId,
+    participantContext,
   ])
 
   const postPlatformContext = useCallback(() => {
@@ -168,7 +173,7 @@ export default function GamePlayer() {
     iframeRef.current.contentWindow.postMessage(
       {
         type: 'platform_context',
-        // schema 1.3 extends the runner context with participant identification.
+        // schema 1.3 extends 1.2 by adding participant identification in the runner context.
         schema_version: '1.3',
         game: {
           id: game.id,
@@ -263,19 +268,11 @@ export default function GamePlayer() {
       }
 
       if (activity && PERSISTED_EVENT_TYPES.includes(normalizedType as PersistedEventType)) {
-        void recordActivityEvent(activity.id, normalizedType as PersistedEventType, normalizedMessage, {
-          id: context.participant_id,
-          display_name: context.display_name,
-          source: context.participant_source,
-        })
+        void recordActivityEvent(activity.id, normalizedType as PersistedEventType, normalizedMessage, participantContext)
           .then(updated => setActivity(updated))
           .catch(error => console.error('[EduLab Runner] failed to persist game event', normalizedType, error))
       } else if (activity && normalizedType === 'ready') {
-        void recordActivityEvent(activity.id, 'runner_opened', normalizedMessage, {
-          id: context.participant_id,
-          display_name: context.display_name,
-          source: context.participant_source,
-        })
+        void recordActivityEvent(activity.id, 'runner_opened', normalizedMessage, participantContext)
           .then(updated => setActivity(updated))
           .catch(error => console.error('[EduLab Runner] failed to persist game event', normalizedType, error))
       }
@@ -286,7 +283,7 @@ export default function GamePlayer() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [activity, context.display_name, context.participant_id, context.participant_source, gameFinished, gameStarted, score])
+  }, [activity, gameFinished, gameStarted, participantContext, score])
 
   // Send initial context to the game once iframe loads
   function handleIframeLoad() {

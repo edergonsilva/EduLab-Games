@@ -36,10 +36,10 @@ const ACTIVITY_STATUS_LABEL: Record<string, string> = {
 const ROOM_POLL_INTERVAL = 3000
 const ACTIVITY_ID_DISPLAY_LENGTH = 8
 const PARTICIPANT_STATUS_LABEL: Record<string, string> = {
-  joined: 'Entrou',
-  active: 'Ativo',
-  finished: 'Finalizou',
-  left: 'Saiu',
+  'joined': 'Entrou',
+  'active': 'Ativo',
+  'finished': 'Finalizou',
+  'left': 'Saiu',
 }
 
 function formatTimestamp(value?: number | null) {

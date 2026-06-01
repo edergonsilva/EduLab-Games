@@ -57,13 +57,34 @@ async def record_activity_event_route(activity_id: str, body: RecordActivityEven
     payload_participant_id = body.payload.get("participant_id")
     payload_display_name = body.payload.get("display_name")
     payload_source = body.payload.get("source")
+    resolved_participant_id = (
+        body.participant_id
+        if body.participant_id
+        else payload_participant_id
+        if isinstance(payload_participant_id, str)
+        else None
+    )
+    resolved_display_name = (
+        body.display_name
+        if body.display_name
+        else payload_display_name
+        if isinstance(payload_display_name, str)
+        else None
+    )
+    resolved_source = (
+        body.source
+        if body.source
+        else payload_source
+        if isinstance(payload_source, str)
+        else None
+    )
     activity = record_activity_event(
         activity_id,
         event_type=body.event_type,
         payload=body.payload,
-        participant_id=body.participant_id if body.participant_id else payload_participant_id if isinstance(payload_participant_id, str) else None,
-        display_name=body.display_name if body.display_name else payload_display_name if isinstance(payload_display_name, str) else None,
-        source=body.source if body.source else payload_source if isinstance(payload_source, str) else None,
+        participant_id=resolved_participant_id,
+        display_name=resolved_display_name,
+        source=resolved_source,
     )
     if activity is None:
         raise HTTPException(status_code=404, detail="Atividade não encontrada.")
