@@ -80,6 +80,21 @@ meu_jogo_v1.edugame
 - se um jogo com o mesmo `id` + `version` for importado novamente, o registro é atualizado em vez de duplicado
 - se `thumbnail` não existir, o jogo continua válido e o frontend mostra um placeholder
 
+## Empacotamento oficial
+
+O repositório principal fornece um empacotador oficial:
+
+```text
+tools/package_edugame.py
+```
+
+Ele valida:
+
+- presença de `manifest.json`;
+- presença do arquivo definido em `entry_point`.
+
+E gera um pacote ZIP com extensão `.edugame`, preservando caminhos relativos.
+
 ## Fluxo atual de publicação
 
 1. o admin importa um `.edugame`
@@ -171,8 +186,7 @@ Limites atuais:
 ## Empacotando um exemplo
 
 ```bash
-cd examples/quiz-basico
-zip -r quiz-basico-v1.edugame .
+python tools/package_edugame.py examples/quiz-basico --output-dir dist
 ```
 
 O arquivo gerado já pode ser usado no painel admin.

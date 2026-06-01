@@ -18,8 +18,13 @@ quiz-basico/
 ## Como empacotar
 
 ```bash
-cd examples/quiz-basico
-zip -r ../../quiz-basico-v1.edugame manifest.json index.html preview/ README.md
+python tools/package_edugame.py examples/quiz-basico --output-dir dist
+```
+
+Validação sem gerar pacote:
+
+```bash
+python tools/package_edugame.py examples/quiz-basico --validate-only
 ```
 
 ## Como importar na plataforma
@@ -27,7 +32,7 @@ zip -r ../../quiz-basico-v1.edugame manifest.json index.html preview/ README.md
 1. Acesse o **Painel Administrativo** (`/admin`)
 2. Faça login com a senha de administrador
 3. Vá em **Importar Jogo (.edugame)**
-4. Selecione o arquivo `quiz-basico-v1.edugame`
+4. Selecione o arquivo gerado em `dist/` (ex.: `gen_quiz_basico_001-1.0.0.edugame`)
 5. O jogo será importado com status **teste**
 6. Teste o jogo e depois publique
 
