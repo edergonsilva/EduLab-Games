@@ -1,0 +1,22 @@
+{
+  "id": "gen_quiz_basico_001",
+  "name": "Quiz Básico",
+  "version": "1.0.0",
+  "developer": "EduLab Games",
+  "credits": "Desenvolvido pela equipe EduLab Games",
+  "school_grades": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "subject": null,
+  "tags": ["quiz", "múltipla escolha", "revisão", "geral"],
+  "mode": ["solo", "sala_codigo"],
+  "min_players": 1,
+  "max_players": 30,
+  "session_required": false,
+  "supports_teacher_panel": true,
+  "supports_ranking": true,
+  "estimated_duration_minutes": 10,
+  "entry_point": "index.html",
+  "thumbnail": "preview/cover.png",
+  "description": "Quiz de múltipla escolha configurável. Ideal para revisão de qualquer disciplina.",
+  "status": "published",
+  "api_version": "1.0"
+}

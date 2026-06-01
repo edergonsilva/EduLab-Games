@@ -1,0 +1,93 @@
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.game-thumb {
+  width: 100%;
+  height: 160px;
+  background: linear-gradient(135deg, var(--color-primary-light), var(--color-primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.game-thumb img         { width: 100%; height: 100%; object-fit: cover; }
+.game-thumb-placeholder { font-size: 4rem; opacity: 0.6; }
+
+.game-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.game-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.game-name        { font-size: 1.1rem; color: var(--color-primary); }
+.game-description { font-size: 0.9rem; color: var(--color-text-muted); flex: 1; }
+
+.game-modes { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.game-meta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+.game-meta-item { display: flex; align-items: center; gap: 0.2rem; }
+
+.game-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+.game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.game-credits { color: var(--color-text-muted); font-size: 0.8rem; }
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  border: 2px dashed var(--color-border);
+}
+
+@media (max-width: 640px) {
+  .game-header,
+  .game-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .game-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

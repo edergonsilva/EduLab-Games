@@ -1,0 +1,132 @@
+/* ---- Hero ---- */
+.home-page { overflow-x: hidden; }
+
+.hero {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #7C3AED 60%, var(--color-primary-dark) 100%);
+  color: #fff;
+  padding: 3.5rem 1rem 3rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+}
+.hero-content { position: relative; max-width: 640px; margin: 0 auto; }
+.hero-emoji   { font-size: 4rem; margin-bottom: 0.5rem; animation: bounce 2s infinite; }
+.hero-title   { font-size: 2.5rem; font-weight: 900; margin-bottom: 0.75rem; }
+.hero-title .highlight { color: var(--color-secondary); }
+.hero-subtitle { font-size: 1.15rem; opacity: 0.9; margin-bottom: 1.75rem; }
+.hero-actions  { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+.hero-decoration {
+  position: absolute;
+  bottom: -1rem;
+  right: 1rem;
+  font-size: 2rem;
+  opacity: 0.18;
+  display: flex;
+  gap: 0.5rem;
+}
+
+@keyframes bounce {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+/* ---- Grades Grid ---- */
+.grades-section { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+
+.grades-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.grade-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 1.5rem 1rem;
+  background: var(--color-surface);
+  border: 3px solid var(--grade-color, var(--color-border));
+  border-radius: var(--radius-card);
+  box-shadow: 0 3px 12px rgba(0,0,0,.08);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  font-family: var(--font-family);
+}
+.grade-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.15);
+  border-color: var(--grade-color, var(--color-primary));
+  background: color-mix(in srgb, var(--grade-color, #eee) 10%, white);
+}
+
+.grade-number {
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: var(--grade-color, var(--color-primary));
+  line-height: 1;
+}
+.grade-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+.grade-arrow {
+  font-size: 1.1rem;
+  color: var(--grade-color, var(--color-primary));
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}
+
+/* ---- Features Strip ---- */
+.features-strip {
+  background: var(--color-secondary);
+  padding: 1.25rem 1rem;
+}
+.features-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 2.5rem;
+  flex-wrap: wrap;
+}
+.feature-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-primary-dark);
+}
+.feature-item span:first-child { font-size: 1.75rem; }
+
+/* ---- Loading / Error ---- */
+.loading-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+}
+.spinner { font-size: 2rem; display: block; margin-bottom: 0.5rem; animation: spin 1.5s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-state {
+  background: #FEF2F2;
+  border: 2px solid #FCA5A5;
+  border-radius: var(--radius-card);
+  padding: 1.25rem;
+  color: #B91C1C;
+  text-align: center;
+  font-weight: 600;
+}

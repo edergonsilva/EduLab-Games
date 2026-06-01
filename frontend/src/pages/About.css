@@ -1,0 +1,60 @@
+.about-page { display: flex; flex-direction: column; gap: 1.5rem; padding-bottom: 3rem; }
+
+.about-hero {
+  text-align: center;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+  color: #fff;
+  padding: 3rem 2rem;
+}
+.about-logo    { font-size: 4rem; margin-bottom: 0.5rem; }
+.about-title   { font-size: 2.5rem; color: #fff; margin-bottom: 0.25rem; }
+.about-version { font-size: 0.85rem; opacity: 0.7; margin-bottom: 0.75rem; }
+.about-tagline { font-size: 1.1rem; opacity: 0.9; max-width: 480px; margin: 0 auto; }
+
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+
+.about-section { display: flex; flex-direction: column; gap: 0.75rem; }
+.about-section h3 { color: var(--color-primary); }
+.about-section p  { color: var(--color-text-muted); font-size: 0.95rem; line-height: 1.65; }
+.about-section code {
+  background: #EDE9FE;
+  color: var(--color-primary);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.88em;
+}
+
+.credits-block {
+  background: linear-gradient(135deg, #F5F3FF, #EDE9FE);
+  border: 2px solid var(--color-primary-light);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  text-align: center;
+}
+.credits-name { font-size: 1.25rem; font-weight: 900; color: var(--color-primary); }
+.credits-role { font-size: 0.9rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+
+.about-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.about-list li { font-size: 0.93rem; color: var(--color-text-muted); }
+.about-list li strong { color: var(--color-text); }
+
+.disciplines-list { columns: 2; }
+
+.about-footer {
+  text-align: center;
+  padding: 2rem;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.about-footer p { color: var(--color-text-muted); font-size: 0.95rem; margin-bottom: 0.35rem; }
+.about-footer-note { font-size: 0.85rem !important; opacity: 0.7; }

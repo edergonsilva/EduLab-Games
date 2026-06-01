@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arrastar e Soltar — EduLab Games</title>
+  <style>
+    :root {
+      --purple: #5B21B6; --yellow: #FFD700; --bg: #F5F3FF;
+      --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font); background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1.5rem;
+    }
+    .game-box {
+      background: #fff; border-radius: 1.25rem;
+      box-shadow: 0 6px 30px rgba(91,33,182,.15);
+      padding: 2rem; max-width: 680px; width: 100%;
+    }
+    h1 { font-size: 1.4rem; font-weight: 800; color: var(--purple); margin-bottom: 0.4rem; }
+    .subtitle { color: #6B7280; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .score-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .score-badge { background: var(--yellow); color: #3B0F8C; padding: 0.3rem 0.8rem; border-radius: 999px; font-weight: 800; font-size: 0.9rem; }
+    .board { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .items-panel h3, .zones-panel h3 { font-size: 0.85rem; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 0.75rem; }
+    .items-list { display: flex; flex-direction: column; gap: 0.5rem; min-height: 60px; }
+    .drag-item {
+      background: #EDE9FE; border: 2px solid #DDD6FE; border-radius: 0.65rem;
+      padding: 0.7rem 1rem; font-weight: 700; font-size: 0.95rem; color: #1E1B4B;
+      cursor: grab; user-select: none; transition: all 0.2s; touch-action: none;
+    }
+    .drag-item:hover { border-color: var(--purple); transform: scale(1.02); }
+    .drag-item.dragging { opacity: 0.4; }
+    .zones-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .drop-zone {
+      border: 2.5px dashed #C4B5FD; border-radius: 0.75rem;
+      padding: 0.75rem 1rem; min-height: 56px;
+      display: flex; flex-direction: column; gap: 0.4rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone.over { border-color: var(--purple); background: #EDE9FE; }
+    .drop-zone.correct { border-color: #22C55E; background: #DCFCE7; }
+    .drop-zone.wrong   { border-color: #EF4444; background: #FEF2F2; }
+    .zone-label { font-size: 0.8rem; font-weight: 700; color: #6B7280; margin-bottom: 0.2rem; }
+    .placed-item {
+      background: #F5F3FF; border: 1.5px solid #C4B5FD; border-radius: 0.5rem;
+      padding: 0.5rem 0.75rem; font-size: 0.9rem; font-weight: 600; color: #1E1B4B;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .remove-btn { background: none; border: none; cursor: pointer; font-size: 0.9rem; color: #9CA3AF; padding: 0 0.25rem; }
+    .check-btn {
+      width: 100%; padding: 0.9rem; background: var(--purple); color: #fff;
+      border: none; border-radius: 0.75rem; font-size: 1.05rem; font-weight: 800;
+      font-family: var(--font); cursor: pointer; transition: filter 0.2s; margin-top: 0.5rem;
+    }
+    .check-btn:hover { filter: brightness(1.1); }
+    .check-btn:disabled { background: #C4B5FD; cursor: default; }
+    .result-msg { text-align: center; margin-top: 1rem; font-size: 1.1rem; font-weight: 700; padding: 0.85rem; border-radius: 0.75rem; }
+    .result-msg.success { background: #DCFCE7; color: #166534; }
+    .result-msg.partial { background: #FEF9C3; color: #92400E; }
+    .credits { margin-top: 1.5rem; text-align: center; font-size: 0.78rem; color: #9CA3AF; }
+    .restart-btn {
+      background: var(--yellow); color: #3B0F8C; border: none; border-radius: 0.75rem;
+      padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 800; font-family: var(--font);
+      cursor: pointer; margin-top: 1rem; display: block; margin-left: auto; margin-right: auto;
+    }
+  </style>
+</head>
+<body>
+<div class="game-box">
+  <h1>🎯 Arrastar e Soltar</h1>
+  <p class="subtitle">Arraste cada palavra para a categoria correta.</p>
+  <div class="score-bar">
+    <span id="round-info">Rodada 1 de 3</span>
+    <span class="score-badge" id="score-badge">⭐ 0 pts</span>
+  </div>
+  <div class="board">
+    <div class="items-panel">
+      <h3>Palavras</h3>
+      <div class="items-list" id="items-list"></div>
+    </div>
+    <div class="zones-panel">
+      <h3>Categorias</h3>
+      <div class="zones-list" id="zones-list"></div>
+    </div>
+  </div>
+  <button class="check-btn" id="check-btn" onclick="checkAnswer()">✅ Verificar Respostas</button>
+  <div id="result-msg"></div>
+  <div class="credits" id="credits">EduLab Games — Associação de Palavras</div>
+</div>
+<script>
+  const GAME_ID = 'arrastar_soltar'
+  const ROUNDS = [
+    {
+      title: "Animais × Frutas",
+      items: ["Gato","Maçã","Leão","Banana","Elefante","Laranja"],
+      zones: [
+        { label: "🐾 Animais", accepts: ["Gato","Leão","Elefante"] },
+        { label: "🍎 Frutas",  accepts: ["Maçã","Banana","Laranja"] },
+      ]
+    },
+    {
+      title: "Países × Capitais",
+      items: ["Brasília","Paris","Brasil","França","Argentina","Buenos Aires"],
+      zones: [
+        { label: "🌍 Países",   accepts: ["Brasil","França","Argentina"] },
+        { label: "🏙 Capitais", accepts: ["Brasília","Paris","Buenos Aires"] },
+      ]
+    },
+    {
+      title: "Par × Ímpar",
+      items: ["2","7","14","9","6","3"],
+      zones: [
+        { label: "✌️ Par",   accepts: ["2","14","6"] },
+        { label: "☝️ Ímpar", accepts: ["7","9","3"] },
+      ]
+    },
+  ]
+
+  let round = 0, score = 0, placed = {}, dragItem = null
+
+  function emit(type, data) {
+    // '*' is required: the iframe runs in a sandboxed context without allow-same-origin,
+    // so its origin is opaque and window.location.origin cannot be used as target.
+    // The parent (GamePlayer) validates events by type rather than trusting origin alone.
+    window.parent.postMessage({ type, gameId: GAME_ID, ...data }, '*')
+  }
+
+  function renderRound() {
+    const r = ROUNDS[round]
+    document.getElementById('round-info').textContent = `Rodada ${round + 1} de ${ROUNDS.length}`
+    document.getElementById('score-badge').textContent = `⭐ ${score} pts`
+    document.getElementById('result-msg').innerHTML = ''
+    document.getElementById('check-btn').disabled = false
+    document.getElementById('check-btn').textContent = '✅ Verificar Respostas'
+
+    placed = {}
+    r.zones.forEach(z => placed[z.label] = [])
+
+    // Items
+    const itemsEl = document.getElementById('items-list')
+    itemsEl.innerHTML = ''
+    shuffleArr([...r.items]).forEach(item => {
+      const el = document.createElement('div')
+      el.className = 'drag-item'
+      el.textContent = item
+      el.draggable = true
+      el.dataset.item = item
+      el.addEventListener('dragstart', e => { dragItem = item; el.classList.add('dragging') })
+      el.addEventListener('dragend', e => { el.classList.remove('dragging') })
+      itemsEl.appendChild(el)
+    })
+
+    // Zones
+    const zonesEl = document.getElementById('zones-list')
+    zonesEl.innerHTML = ''
+    r.zones.forEach(z => {
+      const zone = document.createElement('div')
+      zone.className = 'drop-zone'
+      zone.dataset.zone = z.label
+      zone.innerHTML = `<div class="zone-label">${z.label}</div>`
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over') })
+      zone.addEventListener('dragleave', () => zone.classList.remove('over'))
+      zone.addEventListener('drop', e => {
+        e.preventDefault()
+        zone.classList.remove('over')
+        if (!dragItem) return
+        // Remove from source list
+        const sourceEl = document.querySelector(`[data-item="${CSS.escape(dragItem)}"]`)
+        if (sourceEl) sourceEl.remove()
+        // Remove from any other zone
+        Object.keys(placed).forEach(lbl => {
+          placed[lbl] = placed[lbl].filter(i => i !== dragItem)
+        })
+        placed[z.label].push(dragItem)
+        renderPlaced(zone, z.label)
+        dragItem = null
+      })
+      zonesEl.appendChild(zone)
+    })
+  }
+
+  function renderPlaced(zoneEl, label) {
+    const existing = zoneEl.querySelectorAll('.placed-item')
+    existing.forEach(e => e.remove())
+    placed[label].forEach(item => {
+      const el = document.createElement('div')
+      el.className = 'placed-item'
+      el.innerHTML = `<span>${item}</span><button class="remove-btn" onclick="removeItem('${label}','${item}')">✕</button>`
+      zoneEl.appendChild(el)
+    })
+  }
+
+  function removeItem(label, item) {
+    placed[label] = placed[label].filter(i => i !== item)
+    const zoneEl = document.querySelector(`[data-zone="${CSS.escape(label)}"]`)
+    if (zoneEl) renderPlaced(zoneEl, label)
+    // Re-add to items list
+    const itemsEl = document.getElementById('items-list')
+    const el = document.createElement('div')
+    el.className = 'drag-item'
+    el.textContent = item
+    el.draggable = true
+    el.dataset.item = item
+    el.addEventListener('dragstart', e => { dragItem = item; el.classList.add('dragging') })
+    el.addEventListener('dragend', e => { el.classList.remove('dragging') })
+    itemsEl.appendChild(el)
+  }
+
+  function checkAnswer() {
+    const r = ROUNDS[round]
+    let correct = 0, total = 0
+    r.zones.forEach(z => {
+      const zone = document.querySelector(`[data-zone="${CSS.escape(z.label)}"]`)
+      const placedHere = placed[z.label] || []
+      const isCorrect = placedHere.length === z.accepts.length &&
+        placedHere.every(i => z.accepts.includes(i))
+      if (isCorrect) { correct++; zone && zone.classList.add('correct') }
+      else           { zone && zone.classList.add('wrong') }
+      total++
+    })
+    const roundScore = Math.round((correct / total) * 200)
+    score += roundScore
+    document.getElementById('score-badge').textContent = `⭐ ${score} pts`
+    emit('score_updated', { score })
+    emit('question_answered', { correct: correct === total, score, round: round + 1 })
+
+    const msgEl = document.getElementById('result-msg')
+    if (correct === total) {
+      msgEl.innerHTML = `<div class="result-msg success">✅ Perfeito! +${roundScore} pontos</div>`
+    } else {
+      msgEl.innerHTML = `<div class="result-msg partial">⚠️ ${correct} de ${total} categorias corretas. +${roundScore} pontos</div>`
+    }
+
+    document.getElementById('check-btn').disabled = true
+
+    if (round + 1 < ROUNDS.length) {
+      const nextBtn = document.createElement('button')
+      nextBtn.className = 'check-btn'
+      nextBtn.style.marginTop = '0.75rem'
+      nextBtn.textContent = '▶ Próxima Rodada'
+      nextBtn.onclick = () => { round++; renderRound() }
+      document.getElementById('check-btn').after(nextBtn)
+    } else {
+      emit('game_finished', { score, rounds: ROUNDS.length })
+      const restartBtn = document.createElement('button')
+      restartBtn.className = 'restart-btn'
+      restartBtn.textContent = '🔄 Jogar Novamente'
+      restartBtn.onclick = restart
+      msgEl.appendChild(restartBtn)
+    }
+  }
+
+  function restart() {
+    round = 0; score = 0
+    emit('game_started', {})
+    renderRound()
+  }
+
+  function shuffleArr(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
+  }
+
+  emit('game_started', {})
+  renderRound()
+</script>
+</body>
+</html>
