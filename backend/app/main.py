@@ -11,8 +11,7 @@ from app.database import Base, engine
 from app.routers import games, rooms
 
 # Ensure all model classes are imported before creating tables
-from app.models import Game  # noqa: F401
-from app.routers.rooms import Room  # noqa: F401
+from app.models import Activity, ActivityEvent, Game, Participant, Room  # noqa: F401
 
 # Create database tables
 Base.metadata.create_all(bind=engine)

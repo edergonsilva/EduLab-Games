@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/api/games.ts","./src/api/rooms.ts","./src/components/GameCatalog.tsx","./src/components/GameImport.tsx","./src/pages/JoinRoomPage.tsx","./src/pages/LibraryPage.tsx","./src/pages/RunnerPage.tsx"],"version":"5.9.3"}
