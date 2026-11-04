@@ -1,6 +1,8 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { joinRoom } from '../api/rooms'
+import { userErrorMessage } from '../api/errors'
+import { Button, Card, Field, Input, PageContainer, PageHeader } from '../components/ui'
 
 export function JoinRoomPage() {
   const [searchParams] = useSearchParams()
@@ -19,75 +21,51 @@ export function JoinRoomPage() {
     setMessage(null)
     try {
       const result = await joinRoom(roomCode.trim().toUpperCase(), {
-        display_name: displayName.trim() || undefined,
+        display_name: displayName.trim(),
       })
       setMessage(result.message)
       navigate(result.runner_url)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(userErrorMessage(err, 'Não foi possível entrar na sala.'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ maxWidth: 560, margin: '0 auto', padding: '32px 16px' }}>
-      <h1 style={{ marginTop: 0 }}>Entrar na sala</h1>
-      <p style={{ color: '#64748b', marginBottom: 24 }}>
-        Informe o código da sala e, se quiser, um nome/apelido para o professor acompanhar seu progresso.
-      </p>
+    <PageContainer className="max-w-3xl">
+      <PageHeader eyebrow="Participar de uma atividade" title="Entrar na sala" description="Informe o código da sala e seu nome ou apelido. Cada aluno pode jogar uma vez por atividade." />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          display: 'grid',
-          gap: 12,
-          border: '1px solid #e2e8f0',
-          borderRadius: 12,
-          padding: 20,
-          background: '#fff',
-        }}
-      >
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span>Código da sala</span>
-          <input
+      <Card className="mx-auto max-w-xl p-5 sm:p-7">
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <Field label="Código da sala">
+            <Input
             value={roomCode}
             onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
             placeholder="Ex.: AB12CD"
             required
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1' }}
-          />
-        </label>
+            autoCapitalize="characters"
+            />
+          </Field>
 
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span>Nome ou apelido (opcional)</span>
-          <input
+          <Field label="Nome ou apelido">
+            <Input
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
             placeholder="Ex.: Ana"
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1' }}
-          />
-        </label>
+            required
+            autoComplete="name"
+            />
+          </Field>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: '10px 14px',
-            borderRadius: 8,
-            border: 'none',
-            background: '#2563eb',
-            color: '#fff',
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          {loading ? 'Entrando…' : 'Entrar e abrir atividade'}
-        </button>
+          <Button className="mt-2 w-full" disabled={loading} type="submit">
+            {loading ? 'Entrando…' : 'Entrar e abrir atividade'}
+          </Button>
 
-        {message && <p style={{ margin: 0, color: '#166534' }}>{message}</p>}
-        {error && <p style={{ margin: 0, color: '#dc2626' }}>Erro: {error}</p>}
-      </form>
-    </div>
+          {message && <p className="m-0 text-sm text-brand-dark">{message}</p>}
+          {error && <p role="alert" className="m-0 text-sm text-danger">Erro: {error}</p>}
+        </form>
+      </Card>
+    </PageContainer>
   )
 }

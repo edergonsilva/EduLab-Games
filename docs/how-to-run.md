@@ -18,6 +18,10 @@ docker compose up --build
 | API docs | http://localhost:8000/docs |
 
 Data is persisted in the `./data/` directory on your host machine.
+Set `EDULAB_SESSION_SECRET` to a stable, random secret before deployment so
+teacher sessions remain valid across backend restarts. When serving behind
+HTTPS, set `EDULAB_COOKIE_SECURE=true`. If the frontend uses a different
+domain, configure it in `EDULAB_ALLOWED_ORIGINS` as a comma-separated list.
 
 ---
 
@@ -28,6 +32,7 @@ Data is persisted in the `./data/` directory on your host machine.
 ```bash
 cd backend
 pip install -r requirements.txt
+export EDULAB_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 

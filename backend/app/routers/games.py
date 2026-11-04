@@ -19,6 +19,7 @@ removed.  Games with different slugs are never touched.
 """
 
 import io
+import json
 import logging
 import shutil
 import zipfile
@@ -27,11 +28,16 @@ from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.config import PACKAGES_DIR, STATIC_IMPORTED_DIR, STATIC_IMPORTED_URL
 from app.database import get_db
 from app.models import Game
-from app.schemas import GameResponse, ImportResult
+from app.models import Teacher
+from app.schemas import GameMetadataUpdate, GameResponse, ImportResult
+from app.security import get_current_teacher, get_optional_teacher
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +55,16 @@ def _parse_manifest(zip_bytes: bytes) -> dict:
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             if "manifest.json" not in zf.namelist():
-                raise ValueError("manifest.json not found in .edugame package")
+                raise ValueError("O pacote EduGame não contém o arquivo manifest.json.")
             import json
 
             manifest = json.loads(zf.read("manifest.json"))
     except zipfile.BadZipFile as exc:
-        raise ValueError(f"Uploaded file is not a valid ZIP/edugame: {exc}") from exc
+        raise ValueError("O arquivo enviado não é um pacote EduGame válido.") from exc
 
     for field in _REQUIRED_MANIFEST_FIELDS:
         if not manifest.get(field):
-            raise ValueError(f"manifest.json is missing required field: '{field}'")
+            raise ValueError(f"O manifesto não contém o campo obrigatório '{field}'.")
 
     # Normalise slug to a filesystem-safe identifier
     manifest["slug"] = _normalise_slug(str(manifest["slug"]))
@@ -108,34 +114,114 @@ def _remove_game_artifacts(game: Game) -> None:
 
 
 @router.get("/", response_model=List[GameResponse])
-def list_games(db: Session = Depends(get_db)):
-    """Return all imported games."""
-    return db.query(Game).order_by(Game.title).all()
+def list_games(
+    db: Session = Depends(get_db),
+    teacher: Teacher | None = Depends(get_optional_teacher),
+):
+    """Return public games and, when signed in, the teacher's private games."""
+    query = db.query(Game)
+    if teacher:
+        query = query.filter(or_(Game.is_public.is_(True), Game.teacher_id == teacher.id))
+    else:
+        query = query.filter(Game.is_public.is_(True))
+    games = query.order_by(Game.title).all()
+    for game in games:
+        if game.grade and game.subject:
+            continue
+        manifest_path = Path(game.extracted_path) / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not game.grade:
+            game.grade = _manifest_grade(manifest)
+        if not game.subject:
+            game.subject = manifest.get("subject")
+    return games
+
+
+def _manifest_grade(manifest: dict) -> str | None:
+    grade = manifest.get("grade")
+    if grade:
+        return ", ".join(str(value) for value in grade) if isinstance(grade, list) else str(grade)
+
+    school_grades = manifest.get("school_grades")
+    if isinstance(school_grades, list):
+        return ", ".join(f"{value}º ano" if str(value).isdigit() else str(value) for value in school_grades)
+    if school_grades:
+        return str(school_grades)
+    return None
 
 
 @router.get("/{slug}", response_model=GameResponse)
-def get_game(slug: str, db: Session = Depends(get_db)):
+def get_game(
+    slug: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher | None = Depends(get_optional_teacher),
+):
     """Return a single game by slug."""
-    game = db.query(Game).filter(Game.slug == slug).first()
+    query = db.query(Game).filter(Game.slug == slug)
+    if teacher:
+        query = query.filter(or_(Game.is_public.is_(True), Game.teacher_id == teacher.id))
+    else:
+        query = query.filter(Game.is_public.is_(True))
+    game = query.first()
     if not game:
-        raise HTTPException(status_code=404, detail=f"Game '{slug}' not found")
+        raise HTTPException(status_code=404, detail=f"O jogo '{slug}' não foi encontrado.")
     return game
 
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_game(slug: str, db: Session = Depends(get_db)):
+def delete_game(
+    slug: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
     """Remove a game and all its on-disk artifacts."""
-    game = db.query(Game).filter(Game.slug == slug).first()
+    game = db.query(Game).filter(Game.slug == slug, Game.teacher_id == teacher.id).first()
     if not game:
-        raise HTTPException(status_code=404, detail=f"Game '{slug}' not found")
+        raise HTTPException(status_code=404, detail=f"O jogo '{slug}' não foi encontrado.")
 
     _remove_game_artifacts(game)
     db.delete(game)
     db.commit()
 
 
+@router.patch("/{slug}", response_model=GameResponse)
+def update_game_metadata(
+    slug: str,
+    payload: GameMetadataUpdate,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    game = db.query(Game).filter(Game.slug == slug, Game.teacher_id == teacher.id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail=f"O jogo '{slug}' não foi encontrado.")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "title" in updates:
+        title = (updates["title"] or "").strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="O nome do jogo não pode ficar vazio.")
+        updates["title"] = title
+    for field in ("grade", "subject"):
+        if field in updates and updates[field] is not None:
+            updates[field] = updates[field].strip() or None
+
+    for field, value in updates.items():
+        setattr(game, field, value)
+    db.commit()
+    db.refresh(game)
+    return game
+
+
 @router.post("/import", response_model=ImportResult, status_code=status.HTTP_201_CREATED)
-def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def import_game(
+    file: UploadFile = File(...),
+    is_public: bool = Form(False),
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
     """Import a ``.edugame`` package.
 
     If a game with the same slug already exists the previous game's extracted
@@ -146,7 +232,7 @@ def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename or not file.filename.endswith(".edugame"):
         raise HTTPException(
             status_code=400,
-            detail="Only .edugame files are accepted",
+            detail="Envie um arquivo com extensão .edugame.",
         )
 
     zip_bytes = file.file.read()
@@ -165,6 +251,11 @@ def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
     replaced = existing_game is not None
 
     if replaced:
+        if existing_game.teacher_id != teacher.id:
+            raise HTTPException(
+                status_code=409,
+                detail="Este identificador já pertence a um jogo publicado por outro professor.",
+            )
         logger.info(
             "Game '%s' already exists (version %s). Removing previous artifacts "
             "before importing new package.",
@@ -207,17 +298,19 @@ def import_game(file: UploadFile = File(...), db: Session = Depends(get_db)):
     entry_url = f"{STATIC_IMPORTED_URL}/{slug}/{version}/index.html"
 
     game = Game(
+        teacher_id=teacher.id,
         slug=slug,
         title=manifest["title"],
         version=version,
         description=manifest.get("description"),
         author=manifest.get("author"),
-        grade=manifest.get("grade"),
+        grade=_manifest_grade(manifest),
         subject=manifest.get("subject"),
         thumbnail=manifest.get("thumbnail"),
         entry_url=entry_url,
         extracted_path=str(extract_dir),
         package_path=str(package_path),
+        is_public=is_public,
     )
     db.add(game)
     db.commit()

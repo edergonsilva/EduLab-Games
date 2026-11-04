@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,16 +43,21 @@ def tmp_data_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.STATIC_IMPORTED_DIR", static_dir)
     monkeypatch.setattr("app.routers.games.PACKAGES_DIR", packages_dir)
     monkeypatch.setattr("app.routers.games.STATIC_IMPORTED_DIR", static_dir)
+    for route in app.routes:
+        if getattr(route, "name", None) == "imported_games":
+            route.app.directory = str(static_dir)
+            route.app.all_directories = [str(static_dir)]
 
     return packages_dir, static_dir
 
 
 @pytest.fixture()
-def db_session(tmp_path):
+def db_session(tmp_path, monkeypatch):
     db_url = f"sqlite:///{tmp_path}/test.db"
     test_engine = create_engine(db_url, connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=test_engine)
     TestSessionLocal = sessionmaker(bind=test_engine)
+    monkeypatch.setattr("app.main.SessionLocal", TestSessionLocal)
 
     def override_get_db():
         session = TestSessionLocal()
@@ -68,7 +74,13 @@ def db_session(tmp_path):
 
 @pytest.fixture()
 def client(db_session, tmp_data_dirs):
-    return TestClient(app)
+    test_client = TestClient(app)
+    response = test_client.post(
+        "/api/auth/register",
+        json={"name": "Professor de Teste", "email": "teacher@example.com", "password": "senha-segura-123"},
+    )
+    assert response.status_code == 201
+    return test_client
 
 
 
@@ -99,10 +111,42 @@ def _create_room_and_activity(client: TestClient, game_slug: str = "cdu-2ano"):
 
 
 class TestPriority5ParticipationFlow:
+    def test_room_management_requires_teacher_session(self, client):
+        anonymous_client = TestClient(app)
+
+        assert anonymous_client.get("/api/rooms/").status_code == 401
+        assert anonymous_client.post("/api/rooms/", json={"name": "Sala sem dono"}).status_code == 401
+
+    def test_room_not_found_error_is_returned_in_portuguese(self, client):
+        response = client.get("/api/rooms/nao-existe")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "A sala 'nao-existe' não foi encontrada."
+
+    def test_teacher_rooms_are_isolated_but_students_join_by_invite(self, client):
+        room, _ = _create_room_and_activity(client)
+        client.post("/api/auth/logout")
+        register_response = client.post(
+            "/api/auth/register",
+            json={"name": "Outro Professor", "email": "other@example.com", "password": "senha-segura-456"},
+        )
+        assert register_response.status_code == 201
+
+        assert client.get("/api/rooms/").json() == []
+        assert client.get(f"/api/rooms/{room['code']}/dashboard").status_code == 404
+
+        student_client = TestClient(app)
+        join_response = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "Aluno Convidado"},
+        )
+        assert join_response.status_code == 201
+
     def test_join_creates_participant_linked_to_room_and_activity(self, client):
         room, activity = _create_room_and_activity(client)
 
-        response = client.post(
+        student_client = TestClient(app)
+        response = student_client.post(
             f"/api/rooms/{room['code']}/join",
             json={"display_name": "Ana"},
         )
@@ -115,27 +159,81 @@ class TestPriority5ParticipationFlow:
         assert payload["participant"]["activity_id"] == activity["id"]
         assert payload["game"]["slug"] == "cdu-2ano"
         assert payload["runner_url"].startswith("/runner?participant_id=")
+        access_token = parse_qs(urlsplit(payload["runner_url"]).query)["access_token"][0]
+        entry_url = payload["game"]["entry_url"]
+        assert student_client.get(entry_url).status_code == 404
+        assert student_client.get(f"{entry_url}?access_token={access_token}").status_code == 200
+        assert student_client.get(entry_url.rsplit("/", 1)[0] + "/script.js").status_code == 200
 
-    def test_join_without_name_falls_back_to_anonymous_identity(self, client):
+    def test_join_without_name_is_rejected(self, client):
         room, _ = _create_room_and_activity(client)
 
         response = client.post(f"/api/rooms/{room['code']}/join", json={})
 
-        assert response.status_code == 201
-        payload = response.json()
-        assert payload["participant"]["display_name"].startswith("Anônimo ")
-        assert payload["participant"]["source"] == "anonymous"
-        assert "anônima" in payload["message"].lower()
+        assert response.status_code == 422
+
+    def test_same_student_cannot_join_activity_twice(self, client):
+        room, _ = _create_room_and_activity(client)
+        student_client = TestClient(app)
+        first_join = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "Ana"},
+        )
+        second_join = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "ana"},
+        )
+
+        assert first_join.status_code == 201
+        assert second_join.status_code == 409
+
+    def test_completed_student_cannot_reopen_runner_or_submit_more_events(self, client):
+        room, activity = _create_room_and_activity(client)
+        student_client = TestClient(app)
+        join_response = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "João"},
+        )
+        participant_id = join_response.json()["participant"]["id"]
+        completion_response = student_client.post(
+            f"/api/rooms/activities/{activity['id']}/events",
+            json={"participant_id": participant_id, "event_type": "result", "score": 7},
+        )
+
+        assert completion_response.status_code == 201
+        assert student_client.get(f"/api/rooms/participants/{participant_id}/context").status_code == 409
+        assert student_client.post(
+            f"/api/rooms/activities/{activity['id']}/events",
+            json={"participant_id": participant_id, "event_type": "progress", "score": 8},
+        ).status_code == 409
+
+    def test_active_student_cannot_reopen_runner(self, client):
+        room, _ = _create_room_and_activity(client)
+        student_client = TestClient(app)
+        join_response = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "Pedro"},
+        )
+        participant_id = join_response.json()["participant"]["id"]
+
+        assert student_client.get(f"/api/rooms/participants/{participant_id}/context").status_code == 200
+        event_response = student_client.post(
+            f"/api/rooms/activities/{join_response.json()['activity']['id']}/events",
+            json={"participant_id": participant_id, "event_type": "runner_opened"},
+        )
+        assert event_response.status_code == 201
+        assert student_client.get(f"/api/rooms/participants/{participant_id}/context").status_code == 409
 
     def test_event_updates_participant_progress_and_teacher_dashboard(self, client):
         room, activity = _create_room_and_activity(client)
-        join_response = client.post(
+        student_client = TestClient(app)
+        join_response = student_client.post(
             f"/api/rooms/{room['code']}/join",
             json={"display_name": "Bruno"},
         )
         participant = join_response.json()["participant"]
 
-        event_response = client.post(
+        event_response = student_client.post(
             f"/api/rooms/activities/{activity['id']}/events",
             json={
                 "participant_id": participant["id"],
@@ -159,6 +257,47 @@ class TestPriority5ParticipationFlow:
         assert dashboard["participants"][0]["last_score"] == 95
         assert dashboard["participants"][0]["status"] == "finished"
         assert dashboard["recent_events"][0]["payload"]["phase"] == "final"
+
+    def test_room_history_returns_all_activities_and_score_events(self, client):
+        room, first_activity = _create_room_and_activity(client)
+        student_client = TestClient(app)
+        first_join = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "Marta"},
+        )
+        first_participant_id = first_join.json()["participant"]["id"]
+        student_client.post(
+            f"/api/rooms/activities/{first_activity['id']}/events",
+            json={"participant_id": first_participant_id, "event_type": "progress", "score": 2},
+        )
+        student_client.post(
+            f"/api/rooms/activities/{first_activity['id']}/events",
+            json={"participant_id": first_participant_id, "event_type": "result", "score": 4},
+        )
+
+        second_activity = client.post(
+            f"/api/rooms/{room['code']}/activities/start",
+            json={},
+        ).json()
+        second_join = student_client.post(
+            f"/api/rooms/{room['code']}/join",
+            json={"display_name": "Rui"},
+        )
+        second_participant_id = second_join.json()["participant"]["id"]
+        student_client.post(
+            f"/api/rooms/activities/{second_activity['id']}/events",
+            json={"participant_id": second_participant_id, "event_type": "progress", "score": 6},
+        )
+
+        history_response = client.get(f"/api/rooms/{room['code']}/history")
+        assert history_response.status_code == 200
+        history = history_response.json()
+        assert [entry["activity"]["id"] for entry in history["activities"]] == [
+            second_activity["id"],
+            first_activity["id"],
+        ]
+        assert history["activities"][0]["events"][0]["score"] == 6
+        assert [event["score"] for event in history["activities"][1]["events"]] == [4, 2]
 
     def test_runner_context_exposes_platform_context_for_shell(self, client):
         room, activity = _create_room_and_activity(client)

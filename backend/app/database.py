@@ -27,3 +27,24 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def migrate_schema():
+    """Apply small additive migrations for existing SQLite installations."""
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as connection:
+        for table_name in ("rooms", "games"):
+            columns = {
+                row[1]
+                for row in connection.exec_driver_sql(f"PRAGMA table_info({table_name})")
+            }
+            if "teacher_id" not in columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {table_name} ADD COLUMN teacher_id INTEGER REFERENCES teachers(id)"
+                )
+            if table_name == "games" and "is_public" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE games ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT 1"
+                )

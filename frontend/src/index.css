@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply min-h-full bg-canvas text-ink font-sans antialiased;
+  }
+
+  body {
+    @apply min-h-screen m-0;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2;
+  }
+
+  ::selection {
+    @apply bg-brand-soft text-brand-dark;
+  }
+}
+
+@layer components {
+  .field-control {
+    @apply w-full rounded-md border border-line bg-white px-3 py-2.5 text-sm text-ink placeholder:text-slate-400 transition-colors focus:border-brand;
+  }
+
+  .page-enter {
+    animation: page-enter 320ms ease-out both;
+  }
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
