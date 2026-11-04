@@ -7,10 +7,12 @@ import string
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Activity, ActivityEvent, Game, Participant, Room
+from app.models import Activity, ActivityEvent, Game, Participant, Room, Teacher
+from app.security import create_game_access_token, get_current_teacher
 from app.schemas import (
     ActivityEventCreate,
     ActivityEventResponse,
@@ -21,6 +23,7 @@ from app.schemas import (
     ParticipantResponse,
     RoomCreate,
     RoomDashboardResponse,
+    RoomHistoryResponse,
     RoomResponse,
     RunnerContextResponse,
 )
@@ -36,8 +39,31 @@ def _generate_code(length: int = 6) -> str:
 def _get_room_or_404(code: str, db: Session) -> Room:
     room = db.query(Room).filter(Room.code == code.upper()).first()
     if not room:
-        raise HTTPException(status_code=404, detail=f"Room '{code}' not found")
+        raise HTTPException(status_code=404, detail=f"A sala '{code}' não foi encontrada.")
     return room
+
+
+def _get_owned_room_or_404(code: str, teacher_id: int, db: Session) -> Room:
+    room = (
+        db.query(Room)
+        .filter(Room.code == code.upper(), Room.teacher_id == teacher_id)
+        .first()
+    )
+    if not room:
+        raise HTTPException(status_code=404, detail=f"A sala '{code}' não foi encontrada.")
+    return room
+
+
+def _get_owned_activity_or_404(activity_id: int, teacher_id: int, db: Session) -> Activity:
+    activity = (
+        db.query(Activity)
+        .join(Room, Room.id == Activity.room_id)
+        .filter(Activity.id == activity_id, Room.teacher_id == teacher_id)
+        .first()
+    )
+    if not activity:
+        raise HTTPException(status_code=404, detail=f"A atividade '{activity_id}' não foi encontrada.")
+    return activity
 
 
 def _get_latest_activity(room_id: int, db: Session) -> Activity | None:
@@ -99,7 +125,17 @@ def _normalise_source(display_name: str | None, source: str | None) -> str:
 def _resolve_game_or_404(slug: str, db: Session) -> Game:
     game = db.query(Game).filter(Game.slug == slug).first()
     if not game:
-        raise HTTPException(status_code=404, detail=f"Game '{slug}' not found")
+        raise HTTPException(status_code=404, detail=f"O jogo '{slug}' não foi encontrado.")
+    return game
+
+
+def _resolve_accessible_game_or_404(slug: str, teacher_id: int, db: Session) -> Game:
+    game = db.query(Game).filter(
+        Game.slug == slug,
+        or_(Game.is_public.is_(True), Game.teacher_id == teacher_id),
+    ).first()
+    if not game:
+        raise HTTPException(status_code=404, detail=f"O jogo '{slug}' não foi encontrado.")
     return game
 
 
@@ -115,7 +151,7 @@ def _resolve_participant(activity_id: int, payload: ActivityEventCreate, db: Ses
         if not participant:
             raise HTTPException(
                 status_code=404,
-                detail=f"Participant '{participant_id}' not found for activity '{activity_id}'",
+                detail=f"O participante '{participant_id}' não foi encontrado nesta atividade.",
             )
         return participant
 
@@ -152,21 +188,28 @@ def _event_payload(event: ActivityEvent) -> dict[str, Any]:
 
 
 @router.get("/", response_model=list[RoomResponse])
-def list_rooms(db: Session = Depends(get_db)):
-    rooms = db.query(Room).order_by(Room.id.desc()).all()
+def list_rooms(
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    rooms = db.query(Room).filter(Room.teacher_id == teacher.id).order_by(Room.id.desc()).all()
     return [_room_payload(room, db) for room in rooms]
 
 
 @router.post("/", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
-def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
+def create_room(
+    payload: RoomCreate,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
     if payload.game_slug:
-        _resolve_game_or_404(payload.game_slug, db)
+        _resolve_accessible_game_or_404(payload.game_slug, teacher.id, db)
 
     code = _generate_code()
     while db.query(Room).filter(Room.code == code).first():
         code = _generate_code()
 
-    room = Room(name=payload.name, game_slug=payload.game_slug, code=code)
+    room = Room(name=payload.name, game_slug=payload.game_slug, code=code, teacher_id=teacher.id)
     db.add(room)
     db.commit()
     db.refresh(room)
@@ -174,13 +217,18 @@ def create_room(payload: RoomCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/{code}/activities/start", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
-def start_activity(code: str, payload: ActivityStartRequest, db: Session = Depends(get_db)):
-    room = _get_room_or_404(code, db)
+def start_activity(
+    code: str,
+    payload: ActivityStartRequest,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    room = _get_owned_room_or_404(code, teacher.id, db)
     game_slug = payload.game_slug or room.game_slug
     if not game_slug:
-        raise HTTPException(status_code=422, detail="A room game_slug is required to start an activity")
+        raise HTTPException(status_code=422, detail="Selecione um jogo antes de iniciar a atividade.")
 
-    _resolve_game_or_404(game_slug, db)
+    _resolve_accessible_game_or_404(game_slug, teacher.id, db)
 
     current = _get_active_activity(room.id, db)
     now = datetime.now(UTC)
@@ -198,10 +246,12 @@ def start_activity(code: str, payload: ActivityStartRequest, db: Session = Depen
 
 
 @router.post("/activities/{activity_id}/finish", response_model=ActivityResponse)
-def finish_activity(activity_id: int, db: Session = Depends(get_db)):
-    activity = db.query(Activity).filter(Activity.id == activity_id).first()
-    if not activity:
-        raise HTTPException(status_code=404, detail=f"Activity '{activity_id}' not found")
+def finish_activity(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    activity = _get_owned_activity_or_404(activity_id, teacher.id, db)
 
     activity.status = "finished"
     activity.ended_at = datetime.now(UTC)
@@ -214,8 +264,12 @@ def finish_activity(activity_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{code}/dashboard", response_model=RoomDashboardResponse)
-def get_room_dashboard(code: str, db: Session = Depends(get_db)):
-    room = _get_room_or_404(code, db)
+def get_room_dashboard(
+    code: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    room = _get_owned_room_or_404(code, teacher.id, db)
     activity = _get_latest_activity(room.id, db)
     game = None
     participants: list[Participant] = []
@@ -249,8 +303,50 @@ def get_room_dashboard(code: str, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/{code}/history", response_model=RoomHistoryResponse)
+def get_room_history(
+    code: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    room = _get_owned_room_or_404(code, teacher.id, db)
+    activities = (
+        db.query(Activity)
+        .filter(Activity.room_id == room.id)
+        .order_by(Activity.started_at.desc(), Activity.id.desc())
+        .all()
+    )
+    history = []
+    for activity in activities:
+        participants = (
+            db.query(Participant)
+            .filter(Participant.activity_id == activity.id)
+            .order_by(Participant.joined_at.asc(), Participant.id.asc())
+            .all()
+        )
+        events = (
+            db.query(ActivityEvent)
+            .filter(ActivityEvent.activity_id == activity.id)
+            .order_by(ActivityEvent.created_at.desc(), ActivityEvent.id.desc())
+            .all()
+        )
+        history.append({
+            "activity": activity,
+            "game": db.query(Game).filter(Game.slug == activity.game_slug).first(),
+            "participants": participants,
+            "events": [_event_payload(event) for event in events],
+        })
+
+    return {"room": _room_payload(room, db), "activities": history}
+
+
 @router.get("/activities/{activity_id}/participants", response_model=list[ParticipantResponse])
-def list_activity_participants(activity_id: int, db: Session = Depends(get_db)):
+def list_activity_participants(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    _get_owned_activity_or_404(activity_id, teacher.id, db)
     return (
         db.query(Participant)
         .filter(Participant.activity_id == activity_id)
@@ -266,16 +362,24 @@ def join_room(code: str, payload: JoinRoomRequest, db: Session = Depends(get_db)
     if not activity:
         raise HTTPException(
             status_code=409,
-            detail="This room has no active activity. Start one from the teacher panel first.",
+            detail="Esta sala não tem uma atividade em andamento. Peça ao professor para iniciar uma.",
         )
 
     game = _resolve_game_or_404(activity.game_slug, db)
     display_name = (payload.display_name or "").strip()
     if not display_name:
-        anonymous_count = (
-            db.query(Participant).filter(Participant.activity_id == activity.id).count() + 1
+        raise HTTPException(status_code=422, detail="Informe seu nome ou apelido para entrar na sala.")
+
+    existing_participant = (
+        db.query(Participant)
+        .filter(
+            Participant.activity_id == activity.id,
+            func.lower(Participant.display_name) == display_name.lower(),
         )
-        display_name = f"Anônimo {anonymous_count}"
+        .first()
+    )
+    if existing_participant:
+        raise HTTPException(status_code=409, detail="Este nome já entrou nesta atividade. Cada aluno pode jogar uma vez.")
 
     participant = Participant(
         room_id=room.id,
@@ -297,14 +401,17 @@ def join_room(code: str, payload: JoinRoomRequest, db: Session = Depends(get_db)
         f"Participante '{participant.display_name}' vinculado à atividade {activity.id} da sala {room.code}."
     )
     if participant.source == "anonymous":
-        message += " Identificação mínima não informada; entrada registrada como anônima."
+        message += " A entrada foi registrada sem identificação."
 
     return {
         "room": _room_payload(room, db),
         "activity": activity,
         "participant": participant,
         "game": game,
-        "runner_url": f"/runner?participant_id={participant.id}",
+        "runner_url": (
+            f"/runner?participant_id={participant.id}"
+            f"&access_token={create_game_access_token(participant, game.slug)}"
+        ),
         "message": message,
     }
 
@@ -317,7 +424,9 @@ def join_room(code: str, payload: JoinRoomRequest, db: Session = Depends(get_db)
 def create_activity_event(activity_id: int, payload: ActivityEventCreate, db: Session = Depends(get_db)):
     activity = db.query(Activity).filter(Activity.id == activity_id).first()
     if not activity:
-        raise HTTPException(status_code=404, detail=f"Activity '{activity_id}' not found")
+        raise HTTPException(status_code=404, detail=f"A atividade '{activity_id}' não foi encontrada.")
+    if activity.status != "active":
+        raise HTTPException(status_code=409, detail="Esta atividade já foi encerrada.")
 
     participant = _resolve_participant(activity_id, payload, db)
     now = datetime.now(UTC)
@@ -325,6 +434,8 @@ def create_activity_event(activity_id: int, payload: ActivityEventCreate, db: Se
     event_type = payload.event_type.strip().lower()
 
     if participant:
+        if participant.status == "finished":
+            raise HTTPException(status_code=409, detail="Sua jogada já foi concluída.")
         participant.last_seen_at = now
         if payload.score is not None:
             participant.last_score = payload.score
@@ -360,12 +471,14 @@ def create_activity_event(activity_id: int, payload: ActivityEventCreate, db: Se
 def get_runner_context(participant_id: int, db: Session = Depends(get_db)):
     participant = db.query(Participant).filter(Participant.id == participant_id).first()
     if not participant:
-        raise HTTPException(status_code=404, detail=f"Participant '{participant_id}' not found")
+        raise HTTPException(status_code=404, detail=f"O participante '{participant_id}' não foi encontrado.")
 
     activity = db.query(Activity).filter(Activity.id == participant.activity_id).first()
     room = db.query(Room).filter(Room.id == participant.room_id).first()
     if not activity or not room:
-        raise HTTPException(status_code=404, detail="Participant context is incomplete")
+        raise HTTPException(status_code=404, detail="Não foi possível localizar todos os dados desta participação.")
+    if activity.status != "active" or participant.status != "joined":
+        raise HTTPException(status_code=409, detail="Esta jogada já foi iniciada ou concluída e não pode ser aberta novamente.")
 
     game = _resolve_game_or_404(activity.game_slug, db)
     return {
@@ -386,14 +499,23 @@ def get_runner_context(participant_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{code}", response_model=RoomResponse)
-def get_room(code: str, db: Session = Depends(get_db)):
-    room = _get_room_or_404(code, db)
+def get_room(
+    code: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    room = _get_owned_room_or_404(code, teacher.id, db)
     return _room_payload(room, db)
 
 
 @router.patch("/{code}/status", response_model=RoomResponse)
-def update_room_status(code: str, new_status: str, db: Session = Depends(get_db)):
-    room = _get_room_or_404(code, db)
+def update_room_status(
+    code: str,
+    new_status: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    room = _get_owned_room_or_404(code, teacher.id, db)
     room.status = new_status
     db.commit()
     db.refresh(room)

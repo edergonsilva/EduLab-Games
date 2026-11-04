@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { createActivityEvent, getRunnerContext, type RunnerContext } from '../api/rooms'
+import { Badge, Card, Mascot } from '../components/ui'
+import { userErrorMessage } from '../api/errors'
 
 export function RunnerPage() {
   const [searchParams] = useSearchParams()
@@ -9,10 +11,15 @@ export function RunnerPage() {
   const [context, setContext] = useState<RunnerContext | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [score, setScore] = useState('')
   const [participantStatus, setParticipantStatus] = useState<string>('joined')
   const [participantScore, setParticipantScore] = useState<number | null>(null)
+  const gameUrl = useMemo(() => {
+    if (!context) return ''
+    const url = new URL(context.game.entry_url, window.location.origin)
+    const accessToken = searchParams.get('access_token')
+    if (accessToken) url.searchParams.set('access_token', accessToken)
+    return url.toString()
+  }, [context, searchParams])
 
   useEffect(() => {
     if (!Number.isFinite(participantId) || participantId <= 0) {
@@ -31,10 +38,10 @@ export function RunnerPage() {
         setContext(result)
         setParticipantStatus(result.participant.status)
         setParticipantScore(result.participant.last_score ?? null)
-        await persistEvent(result, { event_type: 'runner_opened' }, false)
+        await persistEvent(result, { event_type: 'runner_opened' })
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err))
+          setError(userErrorMessage(err, 'Não foi possível abrir a atividade.'))
         }
       } finally {
         if (!cancelled) {
@@ -59,7 +66,7 @@ export function RunnerPage() {
 
       const payload = event.data as Record<string, unknown>
       if (payload.type === 'platform_ready' || payload.type === 'game_loaded') {
-        void persistEvent(runnerContext, { event_type: 'game_loaded', payload }, false)
+        void persistEvent(runnerContext, { event_type: 'game_loaded', payload })
         return
       }
 
@@ -95,7 +102,6 @@ export function RunnerPage() {
       status?: string
       payload?: Record<string, unknown>
     },
-    announce = true,
   ) {
     const response = await createActivityEvent(runnerContext.activity.id, {
       participant_id: runnerContext.participant.id,
@@ -108,9 +114,6 @@ export function RunnerPage() {
     }
     if (typeof response.score === 'number') {
       setParticipantScore(response.score)
-    }
-    if (announce) {
-      setStatusMessage(`Evento "${response.event_type}" registrado.`)
     }
   }
 
@@ -141,118 +144,56 @@ export function RunnerPage() {
     window.setTimeout(() => iframeRef.current?.contentWindow?.postMessage(platformContext, '*'), 500)
   }
 
-  async function handleSaveScore() {
-    if (!context) return
-    const parsedScore = Number(score)
-    if (!Number.isFinite(parsedScore)) {
-      setStatusMessage('Informe uma pontuação numérica válida.')
-      return
-    }
-    await persistEvent(context, {
-      event_type: 'progress',
-      score: parsedScore,
-      status: 'active',
-      payload: { source: 'runner-manual-controls' },
-    })
-  }
-
-  async function handleFinish() {
-    if (!context) return
-    await persistEvent(context, {
-      event_type: 'completed',
-      score: participantScore ?? undefined,
-      status: 'finished',
-      payload: { source: 'runner-manual-controls' },
-    })
-  }
-
   if (loading) {
-    return <div style={{ padding: 24 }}>Carregando atividade…</div>
+    return <main className="grid min-h-screen place-items-center bg-canvas p-6 text-sm text-muted">Carregando atividade…</main>
   }
 
   if (error || !context) {
     return (
-      <div style={{ padding: 24 }}>
-        <p style={{ color: '#dc2626' }}>Erro: {error ?? 'Contexto da atividade não encontrado.'}</p>
-        <Link to="/join">Voltar para entrada</Link>
-      </div>
+      <main className="mx-auto grid min-h-screen max-w-xl content-center gap-4 bg-canvas p-6">
+        <Card role="alert" className="border-red-200 bg-red-50 p-4 text-sm text-danger">Erro: {error ?? 'Contexto da atividade não encontrado.'}</Card>
+        <Link className="text-sm font-semibold text-brand no-underline hover:underline" to="/join">Voltar para entrada</Link>
+      </main>
     )
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', minHeight: '100vh' }}>
-      <div style={{ background: '#0f172a' }}>
+    <main className="grid min-h-screen grid-cols-1 bg-ink lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="min-h-[65vh] bg-ink lg:min-h-screen">
         <iframe
           ref={iframeRef}
-          src={context.game.entry_url}
+          src={gameUrl}
           title={context.game.title}
           onLoad={postPlatformContext}
-          style={{ width: '100%', height: '100vh', border: 'none', background: '#fff' }}
+          className="block h-[65vh] w-full border-0 bg-white lg:h-screen"
         />
       </div>
 
-      <aside
-        style={{
-          padding: 20,
-          borderLeft: '1px solid #e2e8f0',
-          background: '#fff',
-          display: 'grid',
-          alignContent: 'start',
-          gap: 16,
-        }}
-      >
+      <aside className="grid content-start gap-5 border-t border-line bg-white p-5 lg:border-l lg:border-t-0 lg:p-6">
         <div>
-          <strong>{context.game.title}</strong>
-          <p style={{ margin: '6px 0 0', color: '#64748b' }}>
-            Sala {context.room.code} • {context.participant.display_name}
-          </p>
-        </div>
-
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
-          <div style={{ display: 'grid', gap: 6, fontSize: 14 }}>
-            <span>Status do participante: <strong>{participantStatus}</strong></span>
-            <span>Última pontuação: <strong>{participantScore ?? '—'}</strong></span>
-            <span>Schema do contexto: <strong>{context.schema_version}</strong></span>
+          <p className="mb-2 text-xs font-bold uppercase text-brand">Atividade em andamento</p>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="font-display text-xl font-semibold text-ink">{context.game.title}</h1>
+            <Mascot className="h-14 w-11" />
           </div>
-        </div>
-
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, display: 'grid', gap: 10 }}>
-          <strong>Controles manuais do MVP</strong>
-          <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
-            Use estes controles para registrar progresso/resultado mesmo quando o jogo ainda não envia eventos via <code>postMessage</code>.
+          <p className="mt-2 text-sm text-muted">
+            Sala <strong className="font-mono text-ink">{context.room.code}</strong> · {context.participant.display_name}
           </p>
-          <input
-            value={score}
-            onChange={(event) => setScore(event.target.value)}
-            type="number"
-            placeholder="Pontuação"
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1' }}
-          />
-          <button
-            onClick={handleSaveScore}
-            style={{ padding: '10px 12px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff' }}
-          >
-            Registrar pontuação
-          </button>
-          <button
-            onClick={handleFinish}
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #16a34a', background: '#f0fdf4', color: '#166534' }}
-          >
-            Marcar como concluído
-          </button>
-          <button
-            onClick={postPlatformContext}
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff' }}
-          >
-            Reenviar platform_context ao jogo
-          </button>
         </div>
 
-        {statusMessage && <p style={{ margin: 0, color: '#166534' }}>{statusMessage}</p>}
+        <Card className="grid gap-3 p-4">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted">Seu status</span>
+            <Badge tone={participantStatus === 'finished' ? 'brand' : 'accent'}>{participantStatus}</Badge>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted">Última pontuação</span>
+            <strong className="font-display text-xl tabular-nums text-ink">{participantScore ?? '—'}</strong>
+          </div>
+        </Card>
 
-        <Link to={`/join?room=${context.room.code}`}>Entrar novamente com outro participante</Link>
-        <Link to="/">Voltar ao painel do professor</Link>
+        <Link className="text-sm font-semibold text-brand no-underline hover:underline" to="/">Voltar ao início</Link>
       </aside>
-    </div>
+    </main>
   )
 }

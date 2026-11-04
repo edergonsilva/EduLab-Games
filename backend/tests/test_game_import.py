@@ -30,7 +30,13 @@ from app.main import app
 # ---------------------------------------------------------------------------
 
 
-def _make_edugame(slug: str, version: str, css: str = "body{}", js: str = "// js") -> bytes:
+def _make_edugame(
+    slug: str,
+    version: str,
+    css: str = "body{}",
+    js: str = "// js",
+    metadata: dict | None = None,
+) -> bytes:
     """Build a minimal in-memory .edugame ZIP."""
     buf = io.BytesIO()
     manifest = {
@@ -40,6 +46,7 @@ def _make_edugame(slug: str, version: str, css: str = "body{}", js: str = "// js
         "description": "A test game",
         "author": "Test Author",
     }
+    manifest.update(metadata or {})
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
         zf.writestr("index.html", f"<html><head><link rel='stylesheet' href='styles.css'></head><body>{slug} v{version}</body></html>")
@@ -61,6 +68,10 @@ def tmp_data_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.STATIC_IMPORTED_DIR", static_dir)
     monkeypatch.setattr("app.routers.games.PACKAGES_DIR", packages_dir)
     monkeypatch.setattr("app.routers.games.STATIC_IMPORTED_DIR", static_dir)
+    for route in app.routes:
+        if getattr(route, "name", None) == "imported_games":
+            route.app.directory = str(static_dir)
+            route.app.all_directories = [str(static_dir)]
 
     return packages_dir, static_dir
 
@@ -88,7 +99,13 @@ def db_session(tmp_path):
 
 @pytest.fixture()
 def client(db_session, tmp_data_dirs):
-    return TestClient(app)
+    test_client = TestClient(app)
+    response = test_client.post(
+        "/api/auth/register",
+        json={"name": "Professora de Teste", "email": "teacher@example.com", "password": "senha-segura-123"},
+    )
+    assert response.status_code == 201
+    return test_client
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +114,89 @@ def client(db_session, tmp_data_dirs):
 
 
 class TestFirstImport:
+    def test_validation_errors_are_returned_in_portuguese(self, client):
+        response = TestClient(app).post(
+            "/api/auth/register",
+            json={"name": "A", "email": "email-invalido", "password": "123"},
+        )
+
+        assert response.status_code == 422
+        payload = response.json()
+        assert payload["detail"] == "Confira os dados informados."
+        assert any("nome" in message for message in payload["errors"])
+
+    def test_owner_can_edit_game_metadata_and_visibility(self, client):
+        package = _make_edugame("jogo-editavel", "1.0.0")
+        imported = client.post(
+            "/api/games/import",
+            files={"file": ("jogo-editavel.edugame", package, "application/octet-stream")},
+        )
+        assert imported.status_code == 201
+
+        response = client.patch(
+            "/api/games/jogo-editavel",
+            json={
+                "title": "Novo nome",
+                "description": "Descrição revisada",
+                "grade": "4º ano",
+                "subject": "Ciências",
+                "is_public": True,
+            },
+        )
+
+        assert response.status_code == 200
+        updated = response.json()
+        assert updated["title"] == "Novo nome"
+        assert updated["description"] == "Descrição revisada"
+        assert updated["grade"] == "4º ano"
+        assert updated["subject"] == "Ciências"
+        assert updated["is_public"] is True
+
+    def test_other_teacher_cannot_edit_game_metadata(self, client):
+        package = _make_edugame("jogo-protegido", "1.0.0")
+        imported = client.post(
+            "/api/games/import",
+            files={"file": ("jogo-protegido.edugame", package, "application/octet-stream")},
+        )
+        assert imported.status_code == 201
+
+        client.post("/api/auth/logout")
+        registration = client.post(
+            "/api/auth/register",
+            json={"name": "Outra professora", "email": "outra@example.com", "password": "senha-segura-456"},
+        )
+        assert registration.status_code == 201
+
+        response = client.patch("/api/games/jogo-protegido", json={"title": "Invadido"})
+        assert response.status_code == 404
+
+    def test_private_game_is_hidden_from_public_catalog(self, client):
+        private_package = _make_edugame("jogo-privado", "1.0.0")
+        response = client.post(
+            "/api/games/import",
+            files={"file": ("jogo-privado.edugame", private_package, "application/octet-stream")},
+        )
+        assert response.status_code == 201
+        assert response.json()["game"]["is_public"] is False
+
+        anonymous_client = TestClient(app)
+        assert all(game["slug"] != "jogo-privado" for game in anonymous_client.get("/api/games/").json())
+        assert any(game["slug"] == "jogo-privado" for game in client.get("/api/games/").json())
+
+    def test_public_game_appears_in_anonymous_catalog(self, client):
+        package = _make_edugame("jogo-publico", "1.0.0")
+        response = client.post(
+            "/api/games/import",
+            data={"is_public": "true"},
+            files={"file": ("jogo-publico.edugame", package, "application/octet-stream")},
+        )
+        assert response.status_code == 201
+        assert response.json()["game"]["is_public"] is True
+
+        anonymous_client = TestClient(app)
+        assert any(game["slug"] == "jogo-publico" for game in anonymous_client.get("/api/games/").json())
+        assert anonymous_client.get(response.json()["game"]["entry_url"]).status_code == 200
+
     def test_import_returns_201(self, client):
         pkg = _make_edugame("meu-jogo", "1.0.0")
         resp = client.post(
@@ -116,6 +216,21 @@ class TestFirstImport:
         assert "meu-jogo" in data["message"]
         assert data["game"]["slug"] == "meu-jogo"
         assert data["game"]["version"] == "1.0.0"
+
+    def test_import_maps_school_grades_to_catalog_grade(self, client):
+        pkg = _make_edugame(
+            "meu-jogo",
+            "1.0.0",
+            metadata={"school_grades": [2, 3], "subject": "matematica"},
+        )
+        response = client.post(
+            "/api/games/import",
+            files={"file": ("meu-jogo.edugame", pkg, "application/octet-stream")},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["game"]["grade"] == "2º ano, 3º ano"
+        assert response.json()["game"]["subject"] == "matematica"
 
     def test_import_creates_extracted_files(self, client, tmp_data_dirs):
         _, static_dir = tmp_data_dirs
@@ -153,6 +268,36 @@ class TestFirstImport:
 
 class TestCleanReimportation:
     """Core feature: clean replacement when the same slug is re-imported."""
+
+    def test_only_publisher_can_replace_community_game(self, client):
+        first_package = _make_edugame("meu-jogo", "1.0.0")
+        first_response = client.post(
+            "/api/games/import",
+            files={"file": ("meu-jogo.edugame", first_package, "application/octet-stream")},
+        )
+        assert first_response.status_code == 201
+
+        client.post("/api/auth/logout")
+        register_response = client.post(
+            "/api/auth/register",
+            json={"name": "Outro Professor", "email": "other@example.com", "password": "senha-segura-456"},
+        )
+        assert register_response.status_code == 201
+
+        replacement = _make_edugame("meu-jogo", "2.0.0")
+        replacement_response = client.post(
+            "/api/games/import",
+            files={"file": ("meu-jogo.edugame", replacement, "application/octet-stream")},
+        )
+        assert replacement_response.status_code == 409
+        assert client.delete("/api/games/meu-jogo").status_code == 404
+        client.post("/api/auth/logout")
+        login_response = client.post(
+            "/api/auth/login",
+            json={"email": "teacher@example.com", "password": "senha-segura-123"},
+        )
+        assert login_response.status_code == 200
+        assert client.get("/api/games/meu-jogo").json()["version"] == "1.0.0"
 
     def test_reimport_returns_replaced_true(self, client):
         pkg_v1 = _make_edugame("meu-jogo", "1.0.0")

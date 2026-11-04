@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 
 class GameBase(BaseModel):
+    teacher_id: int | None = None
+    is_public: bool = False
     slug: str
     title: str
     version: str
@@ -16,9 +18,38 @@ class GameBase(BaseModel):
     entry_url: str
 
 
+class TeacherRegister(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=256)
+    school_name: str | None = Field(default=None, max_length=160)
+
+
+class TeacherLogin(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class TeacherResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    school_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class GameCreate(GameBase):
     extracted_path: str
     package_path: str
+
+
+class GameMetadataUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    grade: str | None = Field(default=None, max_length=100)
+    subject: str | None = Field(default=None, max_length=100)
+    is_public: bool | None = None
 
 
 class GameResponse(GameBase):
@@ -129,6 +160,18 @@ class RoomDashboardResponse(BaseModel):
     participants: list[ParticipantResponse] = Field(default_factory=list)
     recent_events: list[ActivityEventResponse] = Field(default_factory=list)
     participant_summary: dict[str, int] = Field(default_factory=dict)
+
+
+class RoomHistoryActivity(BaseModel):
+    activity: ActivityResponse
+    game: GameResponse | None = None
+    participants: list[ParticipantResponse] = Field(default_factory=list)
+    events: list[ActivityEventResponse] = Field(default_factory=list)
+
+
+class RoomHistoryResponse(BaseModel):
+    room: RoomResponse
+    activities: list[RoomHistoryActivity] = Field(default_factory=list)
 
 
 class RunnerContextResponse(BaseModel):

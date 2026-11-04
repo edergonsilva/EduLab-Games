@@ -1,3 +1,5 @@
+import { apiErrorMessage } from './errors'
+
 export interface Activity {
   id: number
   room_id: number
@@ -62,6 +64,16 @@ export interface RoomDashboard {
   participant_summary: Record<string, number>
 }
 
+export interface RoomHistory {
+  room: Room
+  activities: Array<{
+    activity: Activity
+    game?: RoomDashboard['game']
+    participants: Participant[]
+    events: ActivityEvent[]
+  }>
+}
+
 export interface JoinRoomResult {
   room: Room
   activity: Activity
@@ -93,14 +105,7 @@ export interface RunnerContext extends JoinRoomResult {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let detail = response.statusText
-    try {
-      const payload = await response.json()
-      detail = payload.detail ?? payload.message ?? JSON.stringify(payload)
-    } catch {
-      // ignore JSON parse errors
-    }
-    throw new Error(detail)
+    throw new Error(await apiErrorMessage(response))
   }
   return response.json() as Promise<T>
 }
@@ -138,6 +143,11 @@ export async function finishActivity(activityId: number): Promise<Activity> {
 export async function getRoomDashboard(code: string): Promise<RoomDashboard> {
   const response = await fetch(`/api/rooms/${encodeURIComponent(code)}/dashboard`)
   return parseResponse<RoomDashboard>(response)
+}
+
+export async function getRoomHistory(code: string): Promise<RoomHistory> {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(code)}/history`)
+  return parseResponse<RoomHistory>(response)
 }
 
 export async function joinRoom(

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -12,7 +12,9 @@ class Game(Base):
     __tablename__ = "games"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id"), nullable=True)
     slug: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     version: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -31,10 +33,22 @@ class Game(Base):
     )
 
 
+class Teacher(Base):
+    __tablename__ = "teachers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    school_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
 class Room(Base):
     __tablename__ = "rooms"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey("teachers.id"), nullable=True)
     code: Mapped[str] = mapped_column(String(8), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     game_slug: Mapped[str | None] = mapped_column(String, nullable=True)
