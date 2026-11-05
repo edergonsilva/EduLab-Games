@@ -246,21 +246,46 @@ def import_game(
     slug = manifest["slug"]
     version = manifest["version"]
 
-    # -- Clean up previous installation (if any) -----------------------------
+    # -- Version validation helper -------------------------------------------
+    def compare_versions(v1: str, v2: str) -> int:
+        """Compare semantic versions. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2."""
+        try:
+            parts1 = tuple(map(int, v1.split('.')))
+            parts2 = tuple(map(int, v2.split('.')))
+            if parts1 < parts2:
+                return -1
+            elif parts1 > parts2:
+                return 1
+            else:
+                return 0
+        except (ValueError, AttributeError):
+            return 0  # Fallback on invalid format
+
+    # -- Handle existing game with same slug ---------------------------------
     existing_game = db.query(Game).filter(Game.slug == slug).first()
     replaced = existing_game is not None
 
     if replaced:
+        # Check if game belongs to another teacher
         if existing_game.teacher_id != teacher.id:
             raise HTTPException(
                 status_code=409,
-                detail="Este identificador já pertence a um jogo publicado por outro professor.",
+                detail=f"Identificador '{slug}' já existe em um jogo de outro professor. Escolha um identificador diferente (slug) no manifest.json.",
             )
+        
+        # Check version comparison for same teacher
+        version_cmp = compare_versions(version, existing_game.version)
+        if version_cmp <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Versão '{version}' não é maior que a versão existente '{existing_game.version}'. Para atualizar o jogo, incremente a versão no manifest.json (ex: {existing_game.version} → nova versão maior).",
+            )
+        
         logger.info(
-            "Game '%s' already exists (version %s). Removing previous artifacts "
-            "before importing new package.",
+            "Game '%s' will be updated: version %s → %s. Removing previous artifacts.",
             slug,
             existing_game.version,
+            version,
         )
         _remove_game_artifacts(existing_game)
         db.delete(existing_game)

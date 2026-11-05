@@ -11,6 +11,81 @@ type Uploads = Record<UploadKey, File | null>
 
 const initialUploads: Uploads = { manifest: null, script: null, html: null, style: null, banner: null }
 
+/**
+ * Crops an image to match the target aspect ratio (16:7)
+ * maintaining the larger dimension and cropping from center
+ */
+async function cropImageToRatio(file: File, targetRatio: number = 16 / 7): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Não foi possível obter contexto do canvas'))
+          return
+        }
+
+        const imgRatio = img.width / img.height
+        let cropWidth = img.width
+        let cropHeight = img.height
+        let cropX = 0
+        let cropY = 0
+
+        // Calculate crop dimensions to match target ratio
+        if (imgRatio > targetRatio) {
+          // Image is wider than target - crop width
+          cropWidth = img.height * targetRatio
+          cropX = (img.width - cropWidth) / 2
+        } else {
+          // Image is taller than target - crop height
+          cropHeight = img.width / targetRatio
+          cropY = (img.height - cropHeight) / 2
+        }
+
+        // Set canvas to target dimensions (at least 1280x560)
+        const minWidth = 1280
+        const minHeight = 560
+        const scale = Math.max(minWidth / cropWidth, minHeight / cropHeight)
+        canvas.width = Math.round(cropWidth * scale)
+        canvas.height = Math.round(cropHeight * scale)
+
+        // Draw cropped and scaled image
+        ctx.drawImage(
+          img,
+          cropX,
+          cropY,
+          cropWidth,
+          cropHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        )
+
+        // Convert canvas to blob and create new File
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Não foi possível converter imagem'))
+              return
+            }
+            const croppedFile = new File([blob], file.name, { type: 'image/png' })
+            resolve(croppedFile)
+          },
+          'image/png'
+        )
+      }
+      img.onerror = () => reject(new Error('Não foi possível carregar a imagem'))
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function makePrompt(answers: Record<string, string>, extras: ExtraQuestion[]) {
   const fence = String.fromCharCode(96).repeat(3)
   const manifestExample = JSON.stringify({
@@ -73,6 +148,47 @@ O slug deve conter somente letras minúsculas sem acentos, números e hífens. M
 9. A integração de pontuação com a plataforma é obrigatória: identifique no seu próprio script a variável numérica que realmente guarda o placar (não invente uma variável desconectada da lógica do jogo). Sempre que essa pontuação mudar, chame window.EduLabSDK.score(valorAtualDoPlacar); durante as etapas, envie window.EduLabSDK.progress({ current: etapaAtual, total: totalDeEtapas }); e, ao concluir, chame exatamente uma vez window.EduLabSDK.completed({ score: pontuacaoFinal, metadata: {} }). Envie a pontuação final somente depois de calcular o resultado real do jogo. A plataforma não consegue inferir placar lendo variáveis, texto da tela ou DOM: sem esses eventos, a pontuação não será registrada.
 10. O SDK normalmente será carregado pelo <script src="/edulab-sdk.js"></script> incluído no index.html. Proteja as chamadas com verificações de existência para o jogo continuar funcionando quando aberto fora da plataforma. Se window.EduLabSDK não existir e o jogo estiver embutido, use como fallback compatível window.parent.postMessage({ type: 'edulab.activity.event', event_type: 'progress', score: valorAtualDoPlacar }, '*') para atualizações e window.parent.postMessage({ type: 'edulab.activity.result', score: pontuacaoFinal }, '*') uma única vez ao concluir. Nunca invente pontos, não envie nomes ou dados pessoais e, após concluir, ignore qualquer ação de replay em contexto de sala.
 11. Informe falhas recuperáveis com window.EduLabSDK.error({ message }). A integração é opcional apenas para execução independente; em uma sala EduLab, os eventos de pontuação, progresso e conclusão são obrigatórios para o ranking registrar esses dados.
+12. **Versioning e Atualizações**: Se este jogo for uma versão melhorada ou alterada de um jogo anterior, **incremente a versão semântica no manifest.json**. Por exemplo, se era 1.0.0, mude para 1.0.1 (correção) ou 1.1.0 (nova feature). O professor poderá re-enviar o jogo com versão incrementada para atualizar a versão anterior no sistema. Quando o mesmo professor re-enviar um jogo com slug idêntico, o sistema substituirá apenas se a versão for maior. Se a versão for igual ou menor, a importação será rejeitada.
+
+## Instruções de Salvamento e Download
+Após receber os quatro blocos de código e a imagem, siga um destes procedimentos:
+
+### Opção 1: Se o seu assistente/chat suporta download direto
+Forneça os arquivos como downloads diretos (um botão por arquivo). O professor baixará:
+- manifest.json
+- index.html
+- script.js
+- styles.css
+- banner.png
+
+### Opção 2: Se não há suporte a download, use o método manual
+Instruções para o professor salvar cada arquivo manualmente:
+
+1. **manifest.json**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco JSON completo
+   - Salve como "manifest.json" (certifique-se que é texto simples, não .txt)
+
+2. **index.html**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco HTML completo
+   - Salve como "index.html" (certifique-se que é .html, não .txt)
+
+3. **script.js**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco JavaScript completo
+   - Salve como "script.js" (certifique-se que é .js, não .txt)
+
+4. **styles.css**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco CSS completo
+   - Salve como "styles.css" (certifique-se que é .css, não .txt)
+
+5. **banner.png**:
+   - A imagem será anexada separadamente
+   - Salve ou baixe como "banner.png"
+
+Após salvar os cinco arquivos na mesma pasta, o professor fará um arquivo ZIP contendo todos os cinco, renomeará para seu_slug.edugame e enviará para importar na plataforma EduLab.
 
 Responda com exatamente estes quatro blocos de código e anexe também o arquivo banner.png. Se não puder anexar imagens, escreva depois dos blocos somente o prompt específico para gerar banner.png:
 ${fence}json manifest.json
@@ -153,19 +269,14 @@ export function GameCreatorPage() {
       const scriptFile = uploads.script!
       const htmlFile = uploads.html!
       const styleFile = uploads.style!
-      const bannerFile = uploads.banner!
+      let bannerFile = uploads.banner!
+      
       if (bannerFile.type !== 'image/png') {
         throw new Error('A capa precisa ser uma imagem PNG.')
       }
-      const bannerImage = await createImageBitmap(bannerFile)
-      const bannerAspectRatio = bannerImage.width / bannerImage.height
-      const bannerIsUsable = bannerImage.width >= 1280
-        && bannerImage.height >= 560
-        && Math.abs(bannerAspectRatio - 16 / 7) <= 0.02
-      bannerImage.close()
-      if (!bannerIsUsable) {
-        throw new Error('Use um banner PNG horizontal, com pelo menos 1280 x 560 pixels e proporção 16:7.')
-      }
+      
+      // Auto-crop banner to 16:7 ratio and ensure minimum size
+      bannerFile = await cropImageToRatio(bannerFile)
       const manifestText = await manifestFile.text()
       const manifest = JSON.parse(manifestText) as Record<string, unknown>
       const slug = typeof manifest.slug === 'string' ? manifest.slug.trim() : ''
@@ -214,8 +325,36 @@ export function GameCreatorPage() {
   }
 
   async function copyPrompt() {
-    await navigator.clipboard.writeText(prompt)
-    setCopied(true)
+    try {
+      // Tenta usar Clipboard API (moderna e segura)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(prompt)
+      } else {
+        // Fallback para document.execCommand (navegadores antigos)
+        const textarea = document.createElement('textarea')
+        textarea.value = prompt
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        textarea.style.left = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.select()
+        
+        if (!document.execCommand('copy')) {
+          throw new Error('execCommand falhou')
+        }
+        
+        document.body.removeChild(textarea)
+      }
+      
+      setCopied(true)
+      // Reset após 2 segundos
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Erro ao copiar prompt:', err)
+      setError('Não foi possível copiar o prompt. Tente manualmente.')
+      // Reset após 3 segundos
+      setTimeout(() => setCopied(false), 3000)
+    }
   }
 
   const answerField = (key: keyof typeof answers, label: string, hint: string, placeholder: string, rows = 3) => (

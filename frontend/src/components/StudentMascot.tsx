@@ -13,6 +13,7 @@ export function StudentMascot() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [action, setAction] = useState<MascotAction>(DEFAULT_ACTION)
   const [currentImageUrl, setCurrentImageUrl] = useState<string>('')
+  const [introImageUrl, setIntroImageUrl] = useState<string>('')
   const [processedImages, setProcessedImages] = useState<Record<MascotAction, string>>({} as Record<MascotAction, string>)
 
   const availableActions = getAvailableActions()
@@ -23,6 +24,15 @@ export function StudentMascot() {
   useEffect(() => {
     const loadImages = async () => {
       const processed: Record<string, string> = {}
+      
+      // Process intro image
+      try {
+        const introUrl = await getProcessedImage('/assets/padrao.jpg')
+        setIntroImageUrl(introUrl)
+      } catch (error) {
+        console.error('Failed to process intro image:', error)
+        setIntroImageUrl('/assets/padrao.jpg')
+      }
       
       for (const [actionKey, config] of Object.entries(MASCOT_ACTIONS)) {
         try {
@@ -167,7 +177,7 @@ export function StudentMascot() {
             aria-hidden="true"
             className="student-mascot-intro pointer-events-none fixed left-0 top-0 z-[100]"
             style={{
-              backgroundImage: `url("${new URL('/assets/padrao.jpg', window.location.origin).toString()}")`,
+              backgroundImage: `url("${introImageUrl || new URL('/assets/padrao.jpg', window.location.origin).toString()}")`,
               backgroundSize: 'contain',
               backgroundPosition: 'center',
             }}
@@ -228,8 +238,8 @@ export function StudentMascot() {
                 onKeyDown={handleMenuKeyDown}
                 role="menu"
                 style={{
-                  width: '600px',
-                  height: '600px',
+                  width: '800px',
+                  height: '800px',
                   left: '50%',
                   top: '50%',
                   transform: 'translate(-50%, -50%)',
@@ -238,7 +248,7 @@ export function StudentMascot() {
             >
               {availableActions.map(([actionKey, config], index) => {
                 const angle = (index * anglePerAction) * (Math.PI / 180)
-                const radius = 180
+                const radius = 250
                 const x = Math.cos(angle) * radius
                 const y = Math.sin(angle) * radius
 
