@@ -12,11 +12,13 @@ in school computer labs.  It has a clear client–server separation:
 │  - Import UI (.edugame upload)   │
 │  - In-browser game runner        │
 └──────────────┬───────────────────┘
-               │ HTTP (REST JSON)
+               │ HTTP (REST JSON) + Socket.IO room events
 ┌──────────────▼───────────────────┐
 │      FastAPI backend (Python)    │
 │  - /api/games  — catalog CRUD    │
 │  - /api/games/import  — import   │
+│  - /api/rooms  — room lifecycle  │
+│  - /socket.io — authenticated updates │
 │  - /static/imported/…  — assets  │
 │  - SQLite (SQLAlchemy)           │
 └──────────────────────────────────┘
@@ -47,11 +49,12 @@ run):
 
 - **`app/config.py`** — paths and settings
 - **`app/database.py`** — SQLAlchemy engine + session factory
-- **`app/models.py`** — `Game` ORM model
+- **`app/models.py`** — `Game`, `Room`, `Activity`, `Participant`, and event models
 - **`app/schemas.py`** — Pydantic request/response schemas
 - **`app/routers/games.py`** — game catalog + `.edugame` import (clean reimportation)
 - **`app/routers/rooms.py`** — room management for classroom sessions
-- **`app/main.py`** — FastAPI application, CORS, static file mount
+- **`app/realtime.py`** — authenticated room-scoped Socket.IO channels
+- **`app/main.py`** — FastAPI application, CORS, static files, and Socket.IO ASGI mount
 
 ### Frontend (`frontend/src/`)
 
@@ -59,6 +62,21 @@ run):
 - **`components/GameImport.tsx`** — drag-and-drop import widget
 - **`components/GameCatalog.tsx`** — game card grid
 - **`pages/LibraryPage.tsx`** — main library page
+- **`pages/JoinRoomPage.tsx`**, **`LobbyPage.tsx`**, and **`RunnerPage.tsx`** — participant entry, waiting, and iframe runtime
+
+## Classroom lifecycle
+
+The backend owns the room state: `waiting -> active -> finished`. A room is
+created with one waiting activity and its selected game. Existing business
+rules allow late joins while active; all participants are bound to a signed,
+HttpOnly session cookie. Socket.IO only notifies authorized room members after
+database commits; REST remains the state source and reconnect fallback.
+
+Scores and progress are client-reported by games, validated for shape and
+bounds, and stored with the participant/activity. They are not cryptographic
+proof of correct play. The runner supports the legacy `activity_event`,
+`activity_result`, `edulab.activity.event`, and `edulab.activity.result` messages
+as well as the optional `window.EduLabSDK` protocol.
 
 ### Tools (`tools/`)
 

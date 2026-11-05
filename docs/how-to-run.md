@@ -33,7 +33,7 @@ domain, configure it in `EDULAB_ALLOWED_ORIGINS` as a comma-separated list.
 cd backend
 pip install -r requirements.txt
 export EDULAB_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:socket_app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
@@ -44,7 +44,9 @@ npm install
 npm run dev   # starts on http://localhost:5173
 ```
 
-The Vite dev server proxies `/api` and `/static` to the backend on port 8000.
+The Vite dev server proxies `/api`, `/static`, and `/socket.io` to the backend
+on port 8000. Socket.IO requires the teacher or participant HttpOnly session
+cookie; reconnects reload current room state from the REST API.
 
 ---
 

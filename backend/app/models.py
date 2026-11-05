@@ -54,6 +54,8 @@ class Room(Base):
     game_slug: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="waiting", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Activity(Base):
@@ -61,8 +63,8 @@ class Activity(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), index=True, nullable=False)
-    game_slug: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, default="active", nullable=False)
+    game_slug: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="waiting", nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -75,8 +77,11 @@ class Participant(Base):
     activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), index=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     source: Mapped[str] = mapped_column(String, default="manual", nullable=False)
-    status: Mapped[str] = mapped_column(String, default="joined", nullable=False)
+    status: Mapped[str] = mapped_column(String, default="waiting", nullable=False)
+    connection_status: Mapped[str] = mapped_column(String, default="disconnected", nullable=False)
     last_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    progress_current: Mapped[float | None] = mapped_column(Float, nullable=True)
+    progress_total: Mapped[float | None] = mapped_column(Float, nullable=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

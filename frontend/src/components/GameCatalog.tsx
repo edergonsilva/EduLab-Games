@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react'
 import type { Game, GameMetadataUpdate } from '../api/games'
 import { deleteGame, updateGameMetadata } from '../api/games'
+import { GameBanner } from './GameBanner'
 import { Badge, Button, Card, Field, Input, Modal, Textarea } from './ui'
 
 interface Props {
@@ -77,21 +78,18 @@ export function GameCatalog({ games, teacherId, onDelete, onUpdate }: Props) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {games.map((game) => (
-        <Card key={game.slug} className="flex flex-col overflow-hidden p-4">
-          {game.thumbnail && (
-            <img
-              src={game.thumbnail}
-              alt={game.title}
-              className="mb-4 aspect-[16/7] w-full rounded-md bg-canvas object-cover"
-            />
-          )}
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <Badge>v{game.version}</Badge>
-            <Badge tone={game.is_public ? 'brand' : 'neutral'}>{game.is_public ? 'Público' : 'Privado'}</Badge>
-          </div>
-          <h3 className="font-display text-lg font-semibold leading-6 text-ink">{game.title}</h3>
-          {game.description && <p className="mb-4 mt-2 line-clamp-3 text-sm leading-6 text-muted">{game.description}</p>}
-          <div className="mt-auto flex flex-wrap gap-2 pt-4">
+        <Card key={game.slug} className="flex flex-col overflow-hidden p-0">
+          <GameBanner game={game} />
+          <div className="flex flex-1 flex-col p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <Badge>v{game.version}</Badge>
+              <Badge tone={game.is_public ? 'brand' : 'neutral'}>{game.is_public ? 'Público' : 'Privado'}</Badge>
+            </div>
+            <h3 className="font-display text-lg font-semibold leading-6 text-ink">{game.title}</h3>
+            <p className="mb-4 mt-2 line-clamp-3 min-h-12 text-sm leading-6 text-muted">
+              {game.description || 'Sem descrição cadastrada.'}
+            </p>
+            <div className="mt-auto flex flex-wrap gap-2 pt-2">
             <a
               href={game.entry_url}
               target="_blank"
@@ -118,6 +116,7 @@ export function GameCatalog({ games, teacherId, onDelete, onUpdate }: Props) {
                 </Button>
               </>
             )}
+            </div>
           </div>
         </Card>
       ))}

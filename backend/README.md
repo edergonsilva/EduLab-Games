@@ -6,7 +6,7 @@ FastAPI backend for the EduLab Games platform.
 
 ```bash
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:socket_app --reload --host 0.0.0.0 --port 8000
 ```
 
 API documentation: http://localhost:8000/docs
