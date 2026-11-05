@@ -15,7 +15,9 @@ from app.models import Activity, Participant, Teacher
 SESSION_COOKIE_NAME = "edulab_teacher_session"
 SESSION_ALGORITHM = "HS256"
 SESSION_DURATION = timedelta(days=7)
+GAME_ACCESS_DURATION = timedelta(hours=8)
 GAME_ACCESS_COOKIE_NAME = "edulab_game_access"
+PARTICIPANT_SESSION_COOKIE_NAME = "edulab_participant_session"
 
 
 def hash_password(password: str) -> str:
@@ -56,13 +58,27 @@ def get_teacher_from_token(token: str | None, db: Session) -> Teacher | None:
 
 
 def create_game_access_token(participant: Participant, game_slug: str) -> str:
-    expires_at = datetime.now(UTC) + timedelta(hours=8)
+    expires_at = datetime.now(UTC) + GAME_ACCESS_DURATION
     return jwt.encode(
         {
             "typ": "game_access",
             "sub": str(participant.id),
             "activity_id": participant.activity_id,
             "game_slug": game_slug,
+            "exp": expires_at,
+        },
+        SESSION_SECRET_KEY,
+        algorithm=SESSION_ALGORITHM,
+    )
+
+
+def create_participant_session_token(participant: Participant) -> str:
+    expires_at = datetime.now(UTC) + GAME_ACCESS_DURATION
+    return jwt.encode(
+        {
+            "typ": "participant_session",
+            "sub": str(participant.id),
+            "activity_id": participant.activity_id,
             "exp": expires_at,
         },
         SESSION_SECRET_KEY,
@@ -87,7 +103,47 @@ def validate_game_access_token(token: str | None, game_slug: str, db: Session) -
         Participant.activity_id == activity_id,
     ).first()
     activity = db.query(Activity).filter(Activity.id == activity_id).first()
-    return bool(participant and activity and activity.game_slug == game_slug)
+    if not participant or not activity or activity.game_slug != game_slug:
+        return False
+    from app.models import Room
+
+    room = db.get(Room, activity.room_id)
+    return bool(room and room.status == "active" and participant.status != "completed")
+
+
+def get_current_participant(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Participant:
+    token = request.cookies.get(PARTICIPANT_SESSION_COOKIE_NAME)
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Entre na sala para continuar.",
+    )
+    if not token:
+        raise unauthorized
+
+    participant = get_participant_from_session_token(token, db)
+    if not participant:
+        raise unauthorized
+    return participant
+
+
+def get_participant_from_session_token(token: str | None, db: Session) -> Participant | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SESSION_SECRET_KEY, algorithms=[SESSION_ALGORITHM])
+        if payload.get("typ") != "participant_session":
+            return None
+        participant_id = int(payload["sub"])
+        activity_id = int(payload["activity_id"])
+    except (JWTError, KeyError, TypeError, ValueError):
+        return None
+    return db.query(Participant).filter(
+        Participant.id == participant_id,
+        Participant.activity_id == activity_id,
+    ).first()
 
 
 def get_current_teacher(

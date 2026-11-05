@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { joinRoom } from '../api/rooms'
+import { joinRoom, saveStudentSession } from '../api/rooms'
 import { userErrorMessage } from '../api/errors'
 import { Button, Card, Field, Input, PageContainer, PageHeader } from '../components/ui'
 
@@ -24,7 +24,21 @@ export function JoinRoomPage() {
         display_name: displayName.trim(),
       })
       setMessage(result.message)
-      navigate(result.runner_url)
+
+      saveStudentSession({
+        room_code: result.room.code,
+        participant_id: result.participant.id,
+        display_name: result.participant.display_name,
+        activity_id: result.activity.id,
+        runner_url: result.runner_url ?? null,
+      })
+
+      if (result.activity.status === 'lobby' || !result.runner_url) {
+        navigate(`/sala/${result.room.code}/lobby`, { replace: true })
+        return
+      }
+
+      navigate('/runner')
     } catch (err) {
       setError(userErrorMessage(err, 'Não foi possível entrar na sala.'))
     } finally {

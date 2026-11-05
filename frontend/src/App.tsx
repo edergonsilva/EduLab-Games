@@ -4,6 +4,7 @@ import { getTeacherSession, logoutTeacher, type Teacher } from './api/auth'
 import { BrandMark, Button, cx } from './components/ui'
 import { LibraryPage } from './pages/LibraryPage'
 import { JoinRoomPage } from './pages/JoinRoomPage'
+import { LobbyPage } from './pages/LobbyPage'
 import { RunnerPage } from './pages/RunnerPage'
 import { StudentHomePage } from './pages/StudentHomePage'
 import { TeacherAuthPage } from './pages/TeacherAuthPage'
@@ -77,6 +78,7 @@ function Shell() {
         <Route path="/professor/biblioteca" element={<ProtectedTeacherPage>{(teacher) => <LibraryPage teacherId={teacher.id} />}</ProtectedTeacherPage>} />
         <Route path="/professor/criador-de-jogos" element={<ProtectedTeacherPage>{() => <GameCreatorPage />}</ProtectedTeacherPage>} />
         <Route path="/join" element={<JoinRoomPage />} />
+        <Route path="/sala/:code/lobby" element={<LobbyPage />} />
         <Route path="/runner" element={<RunnerPage />} />
       </Routes>
     </>

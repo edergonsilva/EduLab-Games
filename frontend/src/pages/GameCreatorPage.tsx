@@ -6,10 +6,10 @@ import { userErrorMessage } from '../api/errors'
 import { Button, Card, Field, Input, PageContainer, PageHeader, Select, Textarea } from '../components/ui'
 
 type ExtraQuestion = { id: number; question: string; answer: string }
-type UploadKey = 'manifest' | 'script' | 'html' | 'style'
+type UploadKey = 'manifest' | 'script' | 'html' | 'style' | 'banner'
 type Uploads = Record<UploadKey, File | null>
 
-const initialUploads: Uploads = { manifest: null, script: null, html: null, style: null }
+const initialUploads: Uploads = { manifest: null, script: null, html: null, style: null, banner: null }
 
 function makePrompt(answers: Record<string, string>, extras: ExtraQuestion[]) {
   const fence = String.fromCharCode(96).repeat(3)
@@ -29,7 +29,7 @@ function makePrompt(answers: Record<string, string>, extras: ExtraQuestion[]) {
     .map((item, index) => `${index + 1}. Pergunta: ${item.question.trim()}\n   Resposta: ${item.answer.trim()}`)
     .join('\n')
 
-  return `Você é uma pessoa desenvolvedora experiente de jogos educacionais acessíveis para navegador. Crie um jogo completo seguindo as especificações abaixo e retorne exatamente quatro arquivos, cada um em seu próprio bloco de código identificado pelo nome do arquivo. Não omita código nem use pseudocódigo.
+  return `Você é uma pessoa desenvolvedora experiente de jogos educacionais acessíveis para navegador e também deve criar a imagem de capa do jogo. Crie um jogo completo seguindo as especificações abaixo. Retorne quatro arquivos de código, cada um em seu próprio bloco identificado pelo nome do arquivo, e gere também um arquivo de imagem separado chamado banner.png. Não omita código nem use pseudocódigo.
 
 ## Projeto pedagógico
 - Título provisório: ${answers.title}
@@ -51,22 +51,30 @@ function makePrompt(answers: Record<string, string>, extras: ExtraQuestion[]) {
 - Acessibilidade e adaptações necessárias: ${answers.accessibility}
 ${customAnswers ? `\n## Requisitos adicionais do professor\n${customAnswers}` : ''}
 
+## Imagem de capa obrigatória
+- Gere uma imagem PNG real, separada dos blocos de código, com nome exato banner.png e dimensões 1280 x 560 pixels (proporção 16:7), adequada aos cards da biblioteca.
+- Crie a arte com base no título, objetivo de aprendizagem, disciplina, faixa etária e direção visual do jogo. A imagem deve representar a ideia específica deste jogo, não ser uma capa genérica.
+- Use uma composição horizontal clara, com o assunto principal centralizado e margem visual segura para recortes; evite texto, letras, logotipos, molduras e detalhes importantes nas bordas.
+- Não entregue SVG, HTML, CSS, base64 ou código como substituto da imagem. Se esta interface não puder gerar/anexar uma imagem, forneça ao final um prompt curto e específico para um gerador de imagens criar esse PNG. O professor usará o PNG gerado no campo de capa.
+
 ## Requisitos técnicos obrigatórios
-1. Retorne somente estes quatro arquivos: manifest.json, index.html, script.js e styles.css. Use exatamente um bloco de código por arquivo e identifique cada bloco com o nome do arquivo.
+1. Retorne exatamente quatro blocos de código: manifest.json, index.html, script.js e styles.css, um por arquivo. Gere o banner.png como imagem anexada separadamente; não coloque a imagem dentro de um bloco de código.
 2. O manifesto deve ser JSON válido, sem comentários. Use exatamente os campos e valores deste exemplo, substituindo-os pelos dados reais do jogo. É obrigatório preencher grade e subject com o ano e a disciplina informados acima; não omita nem deixe esses campos vazios:
 ${fence}json
 ${manifestExample}
 ${fence}
 O slug deve conter somente letras minúsculas sem acentos, números e hífens. Mantenha entry_point como index.html e api_version como 1.0.0.
-3. Faça o HTML carregar styles.css e script.js por caminhos relativos. O jogo deve funcionar dentro de um iframe, adaptar-se a celular e desktop e não depender de servidor próprio, build ou arquivos extras.
+3. Faça o HTML carregar styles.css e script.js por caminhos relativos. Inclua <script src="/edulab-sdk.js"></script> antes de script.js. O jogo deve funcionar dentro de um iframe, adaptar-se a celular e desktop e não depender de servidor próprio, build ou arquivos extras.
 4. Implemente toda a lógica em JavaScript puro no script.js, sem módulos externos obrigatórios. Inicialize o jogo após o DOM estar pronto e trate reiniciar/terminar sem recarregar a página.
 5. Se usar ícones, use apenas ícones de uma fonte gratuita de ícones, por exemplo Bootstrap Icons como fonte web via CDN. Não desenhe, gere ou inclua SVGs. O jogo deve continuar utilizável se os ícones externos não carregarem.
-6. Evite imagens, fontes ou arquivos locais adicionais; o pacote final terá apenas estes quatro arquivos. Não use recursos externos com licença restritiva.
+6. Não inclua arquivos locais adicionais além dos quatro arquivos de código e banner.png. O banner será enviado separadamente pelo professor. Não use recursos externos com licença restritiva.
 7. Mostre instruções breves dentro do próprio jogo, feedback claro, progresso e resultado final coerentes com a mecânica. Evite expor a resposta antes da interação.
 8. Garanta que nomes, perguntas e instruções estejam em português do Brasil, com linguagem apropriada à turma.
-9. Integre a pontuação com a plataforma: ao mudar o placar, se window.parent !== window, envie window.parent.postMessage({ type: 'edulab.activity.event', event_type: 'progress', score: pontuacaoNumerica }, '*'). Ao terminar, envie window.parent.postMessage({ type: 'edulab.activity.result', score: pontuacaoFinalNumerica, status: 'finished' }, '*'). Use números, não texto formatado, e não envie nomes ou dados pessoais do aluno. Em contexto de sala, identifique platform_context com activity.origin igual a room e permita somente uma tentativa: esconda/desabilite reiniciar após o primeiro resultado e ignore qualquer ação de replay.
+9. A integração de pontuação com a plataforma é obrigatória: identifique no seu próprio script a variável numérica que realmente guarda o placar (não invente uma variável desconectada da lógica do jogo). Sempre que essa pontuação mudar, chame window.EduLabSDK.score(valorAtualDoPlacar); durante as etapas, envie window.EduLabSDK.progress({ current: etapaAtual, total: totalDeEtapas }); e, ao concluir, chame exatamente uma vez window.EduLabSDK.completed({ score: pontuacaoFinal, metadata: {} }). Envie a pontuação final somente depois de calcular o resultado real do jogo. A plataforma não consegue inferir placar lendo variáveis, texto da tela ou DOM: sem esses eventos, a pontuação não será registrada.
+10. O SDK normalmente será carregado pelo <script src="/edulab-sdk.js"></script> incluído no index.html. Proteja as chamadas com verificações de existência para o jogo continuar funcionando quando aberto fora da plataforma. Se window.EduLabSDK não existir e o jogo estiver embutido, use como fallback compatível window.parent.postMessage({ type: 'edulab.activity.event', event_type: 'progress', score: valorAtualDoPlacar }, '*') para atualizações e window.parent.postMessage({ type: 'edulab.activity.result', score: pontuacaoFinal }, '*') uma única vez ao concluir. Nunca invente pontos, não envie nomes ou dados pessoais e, após concluir, ignore qualquer ação de replay em contexto de sala.
+11. Informe falhas recuperáveis com window.EduLabSDK.error({ message }). A integração é opcional apenas para execução independente; em uma sala EduLab, os eventos de pontuação, progresso e conclusão são obrigatórios para o ranking registrar esses dados.
 
-Responda exatamente neste formato, sem introdução ou explicações fora dos quatro blocos:
+Responda com exatamente estes quatro blocos de código e anexe também o arquivo banner.png. Se não puder anexar imagens, escreva depois dos blocos somente o prompt específico para gerar banner.png:
 ${fence}json manifest.json
 ...JSON completo...
 ${fence}
@@ -133,7 +141,7 @@ export function GameCreatorPage() {
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (Object.values(uploads).some((file) => !file)) {
-      setError('Selecione os quatro arquivos para continuar.')
+      setError('Selecione os quatro arquivos do jogo e a imagem banner.png para continuar.')
       return
     }
 
@@ -145,6 +153,19 @@ export function GameCreatorPage() {
       const scriptFile = uploads.script!
       const htmlFile = uploads.html!
       const styleFile = uploads.style!
+      const bannerFile = uploads.banner!
+      if (bannerFile.type !== 'image/png') {
+        throw new Error('A capa precisa ser uma imagem PNG.')
+      }
+      const bannerImage = await createImageBitmap(bannerFile)
+      const bannerAspectRatio = bannerImage.width / bannerImage.height
+      const bannerIsUsable = bannerImage.width >= 1280
+        && bannerImage.height >= 560
+        && Math.abs(bannerAspectRatio - 16 / 7) <= 0.02
+      bannerImage.close()
+      if (!bannerIsUsable) {
+        throw new Error('Use um banner PNG horizontal, com pelo menos 1280 x 560 pixels e proporção 16:7.')
+      }
       const manifestText = await manifestFile.text()
       const manifest = JSON.parse(manifestText) as Record<string, unknown>
       const slug = typeof manifest.slug === 'string' ? manifest.slug.trim() : ''
@@ -174,13 +195,14 @@ export function GameCreatorPage() {
       manifest.entry_point = 'index.html'
       manifest.api_version = '1.0.0'
       if (!manifest.description) manifest.description = answers.objective
-      delete manifest.thumbnail
+      manifest.thumbnail = 'banner.png'
 
       const zip = new JSZip()
       zip.file('manifest.json', `${JSON.stringify(manifest, null, 2)}\n`)
       zip.file('script.js', scriptFile)
       zip.file('index.html', htmlFile)
       zip.file('styles.css', styleFile)
+      zip.file('banner.png', bannerFile)
       const packageBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
       const packageFile = new File([packageBlob], `${slug}.edugame`, { type: 'application/zip' })
       setResult(await importGame(packageFile, isPublic))
@@ -297,7 +319,7 @@ export function GameCreatorPage() {
         <section className="mt-10 grid gap-5 border-t border-line pt-8">
             <div>
               <h2 className="font-display text-xl font-semibold text-ink">5. Monte e publique o jogo</h2>
-              <p className="mt-1 text-sm text-muted">Salve cada bloco retornado pela IA no arquivo indicado e envie os quatro arquivos abaixo.</p>
+              <p className="mt-1 text-sm text-muted">Envie os quatro arquivos do jogo e o banner PNG gerado para a capa da biblioteca.</p>
             </div>
             <form onSubmit={handleUpload} className="grid gap-5">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -306,6 +328,7 @@ export function GameCreatorPage() {
                   ['script', 'JavaScript', '.js,text/javascript'],
                   ['html', 'Página HTML', '.html,text/html'],
                   ['style', 'Folha de estilos CSS', '.css,text/css'],
+                  ['banner', 'Banner da biblioteca (1280 x 560)', '.png,image/png'],
                 ] as const).map(([key, title, accept]) => (
                   <label key={key} className="grid min-w-0 gap-2 rounded-md border border-line bg-white p-3 text-sm font-medium text-ink transition-colors hover:border-brand/50">
                     <strong>{title}</strong>

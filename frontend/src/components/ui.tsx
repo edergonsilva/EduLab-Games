@@ -39,10 +39,12 @@ export function Button({
   className,
   size = 'md',
   variant = 'primary',
+  type = 'button',
   ...props
 }: ButtonProps) {
   return (
     <button
+      type={type}
       className={cx(
         'inline-flex min-h-10 items-center justify-center gap-2 rounded-md font-semibold transition-colors focus-visible:outline-none disabled:cursor-not-allowed',
         size === 'sm' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2.5 text-sm',
@@ -110,11 +112,13 @@ export function PageHeader({
   title,
   description,
   actions,
+  mascot,
 }: {
   eyebrow?: string
   title: string
   description?: string
   actions?: ReactNode
+  mascot?: ReactNode
 }) {
   return (
     <header className="mb-8 flex flex-wrap items-end justify-between gap-5 border-b border-line pb-6">
@@ -124,7 +128,7 @@ export function PageHeader({
           <h1 className="font-display text-3xl font-semibold tracking-normal text-ink sm:text-4xl">{title}</h1>
           {description && <p className="mt-2 max-w-2xl text-sm leading-6 text-muted sm:text-base">{description}</p>}
         </div>
-        <Mascot className="h-16 w-12 sm:h-24 sm:w-20" />
+        {mascot ?? <Mascot className="h-16 w-12 sm:h-24 sm:w-20" />}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>

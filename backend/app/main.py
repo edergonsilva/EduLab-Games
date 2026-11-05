@@ -13,6 +13,8 @@ from starlette.responses import JSONResponse
 from app.config import CORS_ORIGINS, SESSION_COOKIE_SECURE, STATIC_IMPORTED_DIR, STATIC_IMPORTED_URL
 from app.database import Base, SessionLocal, engine, migrate_schema
 from app.routers import auth, games, rooms
+from app.realtime import sio
+import socketio
 
 # Ensure all model classes are imported before creating tables
 from app.models import Activity, ActivityEvent, Game, Participant, Room, Teacher  # noqa: F401
@@ -158,6 +160,8 @@ app.mount(
 app.include_router(games.router, prefix="/api")
 app.include_router(rooms.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 
 @app.get("/health")

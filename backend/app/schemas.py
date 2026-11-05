@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+import json
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class GameBase(BaseModel):
@@ -71,7 +73,7 @@ class ImportResult(BaseModel):
 class ActivityResponse(BaseModel):
     id: int
     room_id: int
-    game_slug: str
+    game_slug: Optional[str] = None
     status: str
     started_at: datetime
     ended_at: Optional[datetime] = None
@@ -86,7 +88,10 @@ class ParticipantResponse(BaseModel):
     display_name: str
     source: str
     status: str
+    connection_status: str = "disconnected"
     last_score: Optional[float] = None
+    progress_current: Optional[float] = None
+    progress_total: Optional[float] = None
     joined_at: datetime
     last_seen_at: datetime
     finished_at: Optional[datetime] = None
@@ -108,6 +113,17 @@ class ActivityEventResponse(BaseModel):
     created_at: datetime
 
 
+class ProgressPayload(BaseModel):
+    current: float = Field(ge=0, le=1_000_000_000)
+    total: float = Field(gt=0, le=1_000_000_000)
+
+    @model_validator(mode="after")
+    def current_must_not_exceed_total(self):
+        if self.current > self.total:
+            raise ValueError("O progresso atual não pode exceder o total.")
+        return self
+
+
 class RoomResponse(BaseModel):
     id: int
     code: str
@@ -115,6 +131,8 @@ class RoomResponse(BaseModel):
     game_slug: Optional[str] = None
     status: str
     created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     current_activity: Optional[ActivityResponse] = None
     participant_summary: Optional[dict[str, int]] = None
 
@@ -123,7 +141,7 @@ class RoomResponse(BaseModel):
 
 class RoomCreate(BaseModel):
     name: str
-    game_slug: str | None = None
+    game_slug: str
 
 
 class ActivityStartRequest(BaseModel):
@@ -139,18 +157,23 @@ class JoinRoomResponse(BaseModel):
     room: RoomResponse
     activity: ActivityResponse
     participant: ParticipantResponse
-    game: GameResponse
-    runner_url: str
+    game: GameResponse | None = None
+    runner_url: str | None = None
     message: str
 
 
 class ActivityEventCreate(BaseModel):
-    participant_id: int | None = None
-    display_name: str | None = None
-    event_type: str
-    score: float | None = None
-    status: str | None = None
+    event_type: str = Field(min_length=1, max_length=40)
+    score: float | None = Field(default=None, ge=0, le=1_000_000_000)
+    progress: ProgressPayload | None = None
     payload: dict[str, Any] | None = None
+
+    @field_validator("payload")
+    @classmethod
+    def payload_must_be_small(cls, value: dict[str, Any] | None):
+        if value is not None and len(json.dumps(value, ensure_ascii=False)) > 8192:
+            raise ValueError("O evento excede o tamanho permitido.")
+        return value
 
 
 class RoomDashboardResponse(BaseModel):

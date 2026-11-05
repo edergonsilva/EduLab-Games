@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { listGames, type Game } from '../api/games'
 import { userErrorMessage } from '../api/errors'
 import { Badge, Button, Card, PageContainer, PageHeader, SectionHeading } from '../components/ui'
+import { GameBanner } from '../components/GameBanner'
+import { StudentMascot } from '../components/StudentMascot'
 
 function gradeLabels(grade?: string) {
   if (!grade) return ['Ano não informado']
@@ -66,7 +68,7 @@ export function StudentHomePage() {
 
   return (
     <PageContainer>
-      <PageHeader eyebrow="Espaço do aluno" title="O que vamos aprender hoje?" description="Escolha seu ano e sua disciplina para encontrar um jogo." />
+      <PageHeader eyebrow="Espaço do aluno" title="O que vamos aprender hoje?" description="Escolha seu ano e sua disciplina para encontrar um jogo." mascot={<StudentMascot />} />
 
         {error && <Card className="border-red-200 bg-red-50 p-4 text-sm text-danger" role="alert">Não foi possível carregar os jogos: {error}</Card>}
         {loading && <p className="text-sm text-muted">Carregando jogos…</p>}
@@ -130,20 +132,21 @@ export function StudentHomePage() {
                 {visibleGames.length === 0 ? (
                   <p className="text-sm text-muted">Nenhum jogo encontrado nesta disciplina.</p>
                 ) : (
-                  <div className="divide-y divide-line border-y border-line">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {visibleGames.map((game) => (
                       <a
                         key={game.slug}
                         href={game.entry_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="group flex items-center justify-between gap-4 py-4 text-ink no-underline transition-colors hover:text-brand-dark"
+                        className="group flex min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-white text-ink no-underline shadow-panel transition-colors hover:border-brand/50"
                       >
-                        <span className="min-w-0">
-                          <strong className="block text-base font-semibold">{game.title}</strong>
-                          {game.description && <span className="mt-1 block text-sm leading-6 text-muted">{game.description}</span>}
+                        <GameBanner game={game} />
+                        <span className="flex flex-1 flex-col p-4">
+                          <strong className="font-display text-lg font-semibold leading-6 group-hover:text-brand-dark">{game.title}</strong>
+                          <span className="mt-2 min-h-12 text-sm leading-6 text-muted">{game.description || 'Sem descrição cadastrada.'}</span>
+                          <span className="mt-4 self-start"><Badge tone="brand">Jogar ↗</Badge></span>
                         </span>
-                        <Badge tone="brand">Jogar ↗</Badge>
                       </a>
                     ))}
                   </div>

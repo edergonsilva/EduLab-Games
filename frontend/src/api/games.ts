@@ -21,6 +21,17 @@ export interface Game {
   updated_at: string
 }
 
+export function gameBannerUrl(game: Pick<Game, 'entry_url' | 'thumbnail'>): string | null {
+  if (!game.thumbnail) return null
+  try {
+    const entryUrl = new URL(game.entry_url, window.location.origin)
+    const bannerUrl = new URL(game.thumbnail, entryUrl)
+    return bannerUrl.origin === window.location.origin ? bannerUrl.toString() : null
+  } catch {
+    return null
+  }
+}
+
 export interface ImportResult {
   game: Game
   replaced: boolean

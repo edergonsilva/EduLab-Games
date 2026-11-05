@@ -4,6 +4,7 @@ import type { Game } from '../api/games'
 import { listGames } from '../api/games'
 import {
   createRoom,
+  deleteRoom,
   finishActivity,
   getRoomDashboard,
   getRoomHistory,
@@ -16,6 +17,7 @@ import {
 import { GameCatalog } from '../components/GameCatalog'
 import { Badge, Button, Card, Field, formatBrazilDateTime, Input, Modal, PageContainer, PageHeader, SectionHeading, Select } from '../components/ui'
 import { userErrorMessage } from '../api/errors'
+import { subscribeToRooms } from '../api/realtime'
 
 export function LibraryPage({ teacherId }: { teacherId: number }) {
   const [games, setGames] = useState<Game[]>([])
@@ -24,7 +26,10 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [roomName, setRoomName] = useState('')
+  const [activityGameByRoom, setActivityGameByRoom] = useState<Record<string, string>>({})
   const [roomGameSlug, setRoomGameSlug] = useState('')
+  const [copiedInviteCode, setCopiedInviteCode] = useState<string | null>(null)
+  const [copiedRoomCode, setCopiedRoomCode] = useState<string | null>(null)
   const [creatingRoom, setCreatingRoom] = useState(false)
   const [busyRoomCode, setBusyRoomCode] = useState<string | null>(null)
   const [historyRoom, setHistoryRoom] = useState<Room | null>(null)
@@ -61,9 +66,6 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
       const [loadedGames, loadedRooms] = await Promise.all([listGames(), listRooms()])
       setGames(loadedGames)
       setRooms(loadedRooms)
-      if (!roomGameSlug && loadedGames[0]) {
-        setRoomGameSlug(loadedGames[0].slug)
-      }
       await loadDashboards(loadedRooms)
     } catch (err) {
       setError(userErrorMessage(err, 'Não foi possível carregar a biblioteca.'))
@@ -101,18 +103,26 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
       })
     }
 
-    const interval = window.setInterval(() => void refreshDashboards(), 2500)
+    let refreshTimeout: number | undefined
+    const scheduleRefresh = () => {
+      window.clearTimeout(refreshTimeout)
+      refreshTimeout = window.setTimeout(() => void refreshDashboards(), 150)
+    }
+    const unsubscribe = subscribeToRooms(rooms.map((room) => room.code), scheduleRefresh, refreshDashboards)
+    const interval = window.setInterval(() => void refreshDashboards(), 15000)
     return () => {
       cancelled = true
+      unsubscribe()
+      window.clearTimeout(refreshTimeout)
       window.clearInterval(interval)
     }
   }, [rooms])
 
   function handleDeleted(slug: string) {
     setGames((prev) => prev.filter((g) => g.slug !== slug))
-    if (roomGameSlug === slug) {
-      setRoomGameSlug('')
-    }
+    setActivityGameByRoom((current) => Object.fromEntries(
+      Object.entries(current).filter(([, gameSlug]) => gameSlug !== slug),
+    ))
     void loadData()
   }
 
@@ -141,9 +151,10 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
     try {
       await createRoom({
         name: roomName.trim(),
-        game_slug: roomGameSlug || undefined,
+        game_slug: roomGameSlug,
       })
       setRoomName('')
+      setRoomGameSlug('')
       await loadData()
     } catch (err) {
       setError(userErrorMessage(err, 'Não foi possível criar a sala.'))
@@ -153,10 +164,14 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
   }
 
   async function handleStartRoom(room: Room) {
+    const selectedGame = room.game_slug || activityGameByRoom[room.code]
     setBusyRoomCode(room.code)
     setError(null)
     try {
-      await startActivity(room.code, room.game_slug ?? undefined)
+      if (!selectedGame) {
+        throw new Error('Selecione um jogo antes de iniciar a atividade.')
+      }
+      await startActivity(room.code, selectedGame)
       await loadData()
     } catch (err) {
       setError(userErrorMessage(err, 'Não foi possível iniciar a atividade.'))
@@ -177,6 +192,47 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
       setError(userErrorMessage(err, 'Não foi possível encerrar a atividade.'))
     } finally {
       setBusyRoomCode(null)
+    }
+  }
+
+  async function handleDeleteRoom(room: Room) {
+    const confirmed = window.confirm(`Excluir a sala "${room.name}" (código ${room.code})?\n\nEsta ação remove também as atividades e os registros desta sala.`)
+    if (!confirmed) return
+
+    setBusyRoomCode(room.code)
+    setError(null)
+    try {
+      await deleteRoom(room.code)
+      setRooms((current) => current.filter((item) => item.code !== room.code))
+      setDashboards((current) => {
+        const next = { ...current }
+        delete next[room.code]
+        return next
+      })
+    } catch (err) {
+      setError(userErrorMessage(err, 'Não foi possível excluir a sala.'))
+    } finally {
+      setBusyRoomCode(null)
+    }
+  }
+
+  async function handleCopyRoomInvite(room: Room) {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/join?room=${encodeURIComponent(room.code)}`)
+      setCopiedInviteCode(room.code)
+      window.setTimeout(() => setCopiedInviteCode((current) => current === room.code ? null : current), 2000)
+    } catch {
+      setError('Não foi possível copiar o convite neste navegador.')
+    }
+  }
+
+  async function handleCopyRoomCode(room: Room) {
+    try {
+      await navigator.clipboard.writeText(room.code)
+      setCopiedRoomCode(room.code)
+      window.setTimeout(() => setCopiedRoomCode((current) => current === room.code ? null : current), 2000)
+    } catch {
+      setError('Não foi possível copiar o código neste navegador.')
     }
   }
 
@@ -211,15 +267,14 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
               </Field>
               <Field label="Jogo da atividade">
                 <Select
-                value={roomGameSlug}
-                onChange={(event) => setRoomGameSlug(event.target.value)}
-              >
-                <option value="">Selecione um jogo importado</option>
-                {gameOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+                  value={roomGameSlug}
+                  onChange={(event) => setRoomGameSlug(event.target.value)}
+                  required
+                >
+                  <option value="">Selecione um jogo</option>
+                  {gameOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </Select>
               </Field>
               <Button
@@ -228,7 +283,7 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
             >
               {creatingRoom ? 'Criando…' : 'Criar sala'}
               </Button>
-              <p className="m-0 text-xs leading-5 text-muted">Depois de criar, inicie a atividade e compartilhe o código com os alunos.</p>
+              <p className="m-0 text-xs leading-5 text-muted">A sala começa em espera. Compartilhe o convite, acompanhe as entradas e inicie quando a turma estiver pronta.</p>
             </form>
           </Card>
 
@@ -240,7 +295,12 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
             {rooms.map((room) => {
               const dashboard = dashboards[room.code]
               const summary = dashboard?.participant_summary ?? room.participant_summary ?? {}
-              const participants = dashboard?.participants ?? []
+              const participants = [...(dashboard?.participants ?? [])].sort((first, second) => {
+                const firstScore = first.last_score ?? -Infinity
+                const secondScore = second.last_score ?? -Infinity
+                if (firstScore !== secondScore) return Number(secondScore) - Number(firstScore)
+                return new Date(first.joined_at).getTime() - new Date(second.joined_at).getTime()
+              })
               const currentActivity = dashboard?.activity ?? room.current_activity
               const isBusy = busyRoomCode === room.code
 
@@ -250,27 +310,68 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
                     <div>
                       <h3 className="font-display text-lg font-semibold text-ink">{room.name}</h3>
                       <p className="mt-1 text-sm text-muted">
-                        Código <strong className="font-mono text-ink">{room.code}</strong> · jogo <strong className="text-ink">{room.game_slug ?? 'não definido'}</strong>
+                        Código <strong className="font-mono text-ink">{room.code}</strong> · último jogo <strong className="text-ink">{room.game_slug ?? 'nenhum'}</strong>
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                        <Badge tone={room.status === 'active' ? 'brand' : 'neutral'}>{room.status}</Badge>
+                        <Badge tone={room.status === 'active' ? 'brand' : room.status === 'finished' ? 'danger' : 'accent'}>{room.status}</Badge>
                         {currentActivity && <span>Atividade #{currentActivity.id} · {currentActivity.status}</span>}
                       </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      <label className="grid min-w-48 gap-1 text-xs font-semibold text-muted">
+                        Jogo desta atividade
+                        {room.game_slug ? (
+                          <span className="text-sm text-ink">
+                            {games.find((game) => game.slug === room.game_slug)?.title ?? room.game_slug}
+                          </span>
+                        ) : (
+                          <Select
+                            value={activityGameByRoom[room.code] ?? ''}
+                            onChange={(event) => setActivityGameByRoom((current) => ({
+                              ...current,
+                              [room.code]: event.target.value,
+                            }))}
+                            disabled={isBusy || games.length === 0}
+                            aria-label={`Jogo da atividade da sala ${room.name}`}
+                          >
+                            <option value="">Selecione um jogo</option>
+                            {gameOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </Select>
+                        )}
+                      </label>
                       <Button
                         onClick={() => void handleOpenHistory(room)}
+                        type="button"
                         variant="secondary" size="sm">Histórico</Button>
+                      <Button onClick={() => void handleCopyRoomInvite(room)} type="button" variant="secondary" size="sm">
+                        {copiedInviteCode === room.code ? 'Convite copiado' : 'Copiar convite'}
+                      </Button>
+                      <Button onClick={() => void handleCopyRoomCode(room)} type="button" variant="secondary" size="sm">
+                        {copiedRoomCode === room.code ? 'Copiado' : 'Copiar código'}
+                      </Button>
                       <Button
-                        onClick={() => handleStartRoom(room)}
-                        disabled={isBusy || !room.game_slug}
+                        onClick={() => void handleStartRoom(room)}
+                        type="button"
+                        disabled={isBusy || room.status !== 'waiting' || !(room.game_slug || activityGameByRoom[room.code])}
                       >
                         {isBusy ? '…' : 'Iniciar atividade'}
                       </Button>
                       <Button
+                        onClick={() => void handleDeleteRoom(room)}
+                        type="button"
+                        disabled={isBusy}
+                        variant="danger"
+                        size="sm"
+                      >
+                        {isBusy ? '…' : 'Excluir'}
+                      </Button>
+                      <Button
                         onClick={() => handleFinishRoom(room)}
-                        disabled={isBusy || !currentActivity}
+                        type="button"
+                        disabled={isBusy || room.status !== 'active' || !currentActivity}
                         variant="secondary" size="sm">Encerrar atividade</Button>
                       <Link className="inline-flex min-h-10 items-center rounded-md bg-brand-soft px-3 py-2 text-sm font-semibold text-brand-dark no-underline hover:bg-brand/15" to={`/join?room=${room.code}`}>
                         Link do aluno
@@ -280,10 +381,14 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
 
                   <div className="my-4 flex flex-wrap gap-2">
                     <Badge>{summary.total ?? 0} participantes</Badge>
-                    <Badge>{summary.joined ?? 0} entraram</Badge>
-                    <Badge tone="accent">{summary.active ?? 0} jogando</Badge>
-                    <Badge tone="brand">{summary.finished ?? 0} concluíram</Badge>
+                    <Badge>{summary.waiting ?? 0} na fila</Badge>
+                    <Badge tone="accent">{summary.playing ?? 0} jogando</Badge>
+                    <Badge tone="brand">{summary.completed ?? 0} concluíram</Badge>
                   </div>
+
+                  <p className="mb-4 text-xs leading-5 text-muted">
+                    A pontuação aparece quando o jogo envia eventos de atividade. Jogos sem essa integração abrem normalmente, mas não atualizam o ranking.
+                  </p>
 
                   {participants.length === 0 ? (
                     <p className="m-0 text-sm text-muted">Nenhum participante registrado nesta atividade ainda.</p>
@@ -296,19 +401,31 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
                             <th className="px-3 py-2.5 font-semibold">Origem</th>
                             <th className="px-3 py-2.5 font-semibold">Status</th>
                             <th className="px-3 py-2.5 font-semibold">Pontuação</th>
+                            <th className="px-3 py-2.5 font-semibold">Conexão</th>
+                            <th className="px-3 py-2.5 font-semibold">Progresso</th>
                             <th className="px-3 py-2.5 font-semibold">Última atividade</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {participants.map((participant) => (
-                            <tr key={participant.id} className="border-b border-line last:border-0">
-                              <td className="px-3 py-2.5 font-medium text-ink">{participant.display_name}</td>
-                              <td className="px-3 py-2.5 text-muted">{participant.source}</td>
-                              <td className="px-3 py-2.5 text-muted">{participant.status}</td>
-                              <td className="px-3 py-2.5 font-semibold tabular-nums text-ink">{participant.last_score ?? '—'}</td>
-                              <td className="px-3 py-2.5 text-muted">{formatBrazilDateTime(participant.last_seen_at)}</td>
-                            </tr>
-                          ))}
+                          {participants.map((participant) => {
+                            const statusLabel = {
+                              waiting: 'Na fila',
+                              playing: 'Jogando',
+                              completed: 'Concluiu',
+                            }[participant.status] ?? participant.status
+
+                            return (
+                              <tr key={participant.id} className="border-b border-line last:border-0">
+                                <td className="px-3 py-2.5 font-medium text-ink">{participant.display_name}</td>
+                                <td className="px-3 py-2.5 text-muted">{participant.source}</td>
+                                <td className="px-3 py-2.5 text-muted">{statusLabel}</td>
+                                <td className="px-3 py-2.5 font-semibold tabular-nums text-ink">{participant.last_score ?? '—'}</td>
+                                <td className="px-3 py-2.5 text-muted">{participant.connection_status === 'connected' ? 'Conectado' : 'Desconectado'}</td>
+                                <td className="px-3 py-2.5 text-muted">{participant.progress_total ? `${participant.progress_current ?? 0}/${participant.progress_total}` : '—'}</td>
+                                <td className="px-3 py-2.5 text-muted">{formatBrazilDateTime(participant.last_seen_at)}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
