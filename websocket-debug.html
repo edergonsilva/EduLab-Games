@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug WebSocket - EduLab Games</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 { color: #4ec9b0; }
+        .section {
+            border: 1px solid #3e3e42;
+            padding: 15px;
+            margin: 10px 0;
+            background: #252526;
+            border-radius: 4px;
+        }
+        .log {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 4px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4ec9b0;
+            padding-left: 10px;
+        }
+        .log-entry.error {
+            border-left-color: #f48771;
+            color: #f48771;
+        }
+        .log-entry.success {
+            border-left-color: #6a9955;
+            color: #6a9955;
+        }
+        .log-entry.warning {
+            border-left-color: #dcdcaa;
+            color: #dcdcaa;
+        }
+        .log-entry.info {
+            border-left-color: #569cd6;
+            color: #569cd6;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px 0;
+            background: #3e3e42;
+            color: #d4d4d4;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        input {
+            width: 200px;
+        }
+        button {
+            background: #007acc;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #6a9955;
+            color: white;
+        }
+        .status.disconnected {
+            background: #f48771;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Debug WebSocket - EduLab Games</h1>
+    
+    <div class="section">
+        <h2>Status da Conexão</h2>
+        <div id="status" class="status disconnected">❌ Desconectado</div>
+        <p>Socket ID: <strong id="socket-id">-</strong></p>
+        <p>Cookies: <strong id="cookies">-</strong></p>
+    </div>
+
+    <div class="section">
+        <h2>Controles</h2>
+        <div>
+            <label>Código da sala:</label>
+            <input type="text" id="room-code" placeholder="Ex: ABC123" value="ABC123">
+        </div>
+        <div>
+            <button onclick="connectSocket()">Conectar</button>
+            <button onclick="joinRoom()">Entrar na sala</button>
+            <button onclick="leaveRoom()">Sair da sala</button>
+            <button onclick="testEvent()">Simular activity.started</button>
+            <button onclick="clearLogs()">Limpar logs</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Logs</h2>
+        <div id="logs" class="log"></div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        let socket = null;
+        const logsDiv = document.getElementById('logs');
+        const statusDiv = document.getElementById('status');
+        const socketIdSpan = document.getElementById('socket-id');
+        const cookiesSpan = document.getElementById('cookies');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString('pt-BR');
+            entry.textContent = `[${timestamp}] ${message}`;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        function clearLogs() {
+            logsDiv.innerHTML = '';
+        }
+
+        function updateStatus() {
+            const isConnected = socket && socket.connected;
+            statusDiv.className = isConnected ? 'status connected' : 'status disconnected';
+            statusDiv.textContent = isConnected ? `✅ Conectado (${socket.id})` : '❌ Desconectado';
+            socketIdSpan.textContent = socket ? socket.id : '-';
+            
+            // Mostrar cookies
+            const cookies = document.cookie.split(';').map(c => c.trim()).filter(c => c);
+            cookiesSpan.textContent = cookies.length > 0 ? cookies.join('; ') : 'Nenhum cookie';
+        }
+
+        function connectSocket() {
+            if (socket && socket.connected) {
+                log('⚠️ Socket já está conectado', 'warning');
+                return;
+            }
+
+            log('🔌 Tentando conectar...', 'info');
+            
+            socket = io('http://localhost:8000', {
+                path: '/socket.io/',
+                withCredentials: true,
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                reconnectionAttempts: 10,
+            });
+
+            socket.on('connect', () => {
+                log('✅ Conectado com sucesso!', 'success');
+                updateStatus();
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`❌ Desconectado: ${reason}`, 'error');
+                updateStatus();
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`❌ Erro de conexão: ${error.message}`, 'error');
+                updateStatus();
+            });
+
+            socket.onAny((eventName, payload) => {
+                log(`📨 Evento recebido: ${eventName}`, 'success');
+                console.log('Payload:', payload);
+            });
+
+            updateStatus();
+        }
+
+        function joinRoom() {
+            if (!socket || !socket.connected) {
+                log('❌ Socket não está conectado', 'error');
+                return;
+            }
+
+            const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
+            if (!roomCode) {
+                log('❌ Código da sala não informado', 'error');
+                return;
+            }
+
+            log(`📍 Emitindo room.join para: ${roomCode}`, 'info');
+            socket.emit('room.join', { room_code: roomCode }, (response) => {
+                if (response.ok) {
+                    log(`✅ Entrou na sala: ${response.room_code}`, 'success');
+                } else {
+                    log(`❌ Erro ao entrar: ${response.error}`, 'error');
+                }
+            });
+        }
+
+        function leaveRoom() {
+            if (!socket || !socket.connected) {
+                log('❌ Socket não está conectado', 'error');
+                return;
+            }
+
+            const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
+            if (!roomCode) {
+                log('❌ Código da sala não informado', 'error');
+                return;
+            }
+
+            log(`👋 Emitindo room.leave para: ${roomCode}`, 'info');
+            socket.emit('room.leave', { room_code: roomCode });
+        }
+
+        function testEvent() {
+            log('⚠️ Para testar eventos reais, o professor precisa iniciar a atividade', 'warning');
+            log('🎉 Simulando activity.started manualmente...', 'info');
+            
+            // Simular o evento que viria do servidor
+            if (socket && socket.connected) {
+                socket.emit('test_emit', {
+                    event: 'activity.started',
+                    payload: {
+                        room_code: document.getElementById('room-code').value,
+                        activity_id: 1,
+                        game_slug: 'test-game'
+                    }
+                });
+            }
+        }
+
+        // Conectar automaticamente ao carregar
+        window.addEventListener('load', () => {
+            log('📄 Página carregada', 'info');
+            connectSocket();
+        });
+
+        // Atualizar status a cada 2 segundos
+        setInterval(updateStatus, 2000);
+    </script>
+</body>
+</html>

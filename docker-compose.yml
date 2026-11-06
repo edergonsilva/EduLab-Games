@@ -7,9 +7,9 @@ services:
       - ./data:/data
     environment:
       - PYTHONPATH=/app
-      - EDULAB_SESSION_SECRET=${EDULAB_SESSION_SECRET:-}
+      - EDULAB_SESSION_SECRET=${EDULAB_SESSION_SECRET}
       - EDULAB_COOKIE_SECURE=${EDULAB_COOKIE_SECURE:-false}
-      - EDULAB_ALLOWED_ORIGINS=${EDULAB_ALLOWED_ORIGINS:-http://localhost:3000}
+      - EDULAB_ALLOWED_ORIGINS=${EDULAB_ALLOWED_ORIGINS}
     restart: unless-stopped
 
   frontend:

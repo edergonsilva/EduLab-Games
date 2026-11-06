@@ -4,6 +4,7 @@ from pathlib import Path
 import logging
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles

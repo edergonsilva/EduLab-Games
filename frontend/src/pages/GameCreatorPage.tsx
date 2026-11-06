@@ -11,6 +11,81 @@ type Uploads = Record<UploadKey, File | null>
 
 const initialUploads: Uploads = { manifest: null, script: null, html: null, style: null, banner: null }
 
+/**
+ * Crops an image to match the target aspect ratio (16:7)
+ * maintaining the larger dimension and cropping from center
+ */
+async function cropImageToRatio(file: File, targetRatio: number = 16 / 7): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Não foi possível obter contexto do canvas'))
+          return
+        }
+
+        const imgRatio = img.width / img.height
+        let cropWidth = img.width
+        let cropHeight = img.height
+        let cropX = 0
+        let cropY = 0
+
+        // Calculate crop dimensions to match target ratio
+        if (imgRatio > targetRatio) {
+          // Image is wider than target - crop width
+          cropWidth = img.height * targetRatio
+          cropX = (img.width - cropWidth) / 2
+        } else {
+          // Image is taller than target - crop height
+          cropHeight = img.width / targetRatio
+          cropY = (img.height - cropHeight) / 2
+        }
+
+        // Set canvas to target dimensions (at least 1280x560)
+        const minWidth = 1280
+        const minHeight = 560
+        const scale = Math.max(minWidth / cropWidth, minHeight / cropHeight)
+        canvas.width = Math.round(cropWidth * scale)
+        canvas.height = Math.round(cropHeight * scale)
+
+        // Draw cropped and scaled image
+        ctx.drawImage(
+          img,
+          cropX,
+          cropY,
+          cropWidth,
+          cropHeight,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        )
+
+        // Convert canvas to blob and create new File
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Não foi possível converter imagem'))
+              return
+            }
+            const croppedFile = new File([blob], file.name, { type: 'image/png' })
+            resolve(croppedFile)
+          },
+          'image/png'
+        )
+      }
+      img.onerror = () => reject(new Error('Não foi possível carregar a imagem'))
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function makePrompt(answers: Record<string, string>, extras: ExtraQuestion[]) {
   const fence = String.fromCharCode(96).repeat(3)
   const manifestExample = JSON.stringify({
@@ -28,6 +103,14 @@ function makePrompt(answers: Record<string, string>, extras: ExtraQuestion[]) {
     .filter((item) => item.question.trim() || item.answer.trim())
     .map((item, index) => `${index + 1}. Pergunta: ${item.question.trim()}\n   Resposta: ${item.answer.trim()}`)
     .join('\n')
+
+  const openBrace = '{'
+  const closeBrace = '}'
+  const progressExample = 'window.EduLabSDK.progress(' + openBrace + ' current: etapaAtual, total: totalDeEtapas ' + closeBrace + ')'
+  const completedExample = 'window.EduLabSDK.completed(' + openBrace + ' score: pontuacaoFinal, metadata: ' + openBrace + closeBrace + ' ' + closeBrace + ')'
+  const postMessageEvent = 'window.parent.postMessage(' + openBrace + ' type: \'edulab.activity.event\', event_type: \'progress\', score: valorAtualDoPlacar ' + closeBrace + ', \'*\')'
+  const postMessageResult = 'window.parent.postMessage(' + openBrace + ' type: \'edulab.activity.result\', score: pontuacaoFinal ' + closeBrace + ', \'*\')'
+  const errorExample = 'window.EduLabSDK.error(' + openBrace + ' message ' + closeBrace + ')'
 
   return `Você é uma pessoa desenvolvedora experiente de jogos educacionais acessíveis para navegador e também deve criar a imagem de capa do jogo. Crie um jogo completo seguindo as especificações abaixo. Retorne quatro arquivos de código, cada um em seu próprio bloco identificado pelo nome do arquivo, e gere também um arquivo de imagem separado chamado banner.png. Não omita código nem use pseudocódigo.
 
@@ -67,14 +150,61 @@ O slug deve conter somente letras minúsculas sem acentos, números e hífens. M
 3. Faça o HTML carregar styles.css e script.js por caminhos relativos. Inclua <script src="/edulab-sdk.js"></script> antes de script.js. O jogo deve funcionar dentro de um iframe, adaptar-se a celular e desktop e não depender de servidor próprio, build ou arquivos extras.
 4. Implemente toda a lógica em JavaScript puro no script.js, sem módulos externos obrigatórios. Inicialize o jogo após o DOM estar pronto e trate reiniciar/terminar sem recarregar a página.
 5. Se usar ícones, use apenas ícones de uma fonte gratuita de ícones, por exemplo Bootstrap Icons como fonte web via CDN. Não desenhe, gere ou inclua SVGs. O jogo deve continuar utilizável se os ícones externos não carregarem.
-6. Não inclua arquivos locais adicionais além dos quatro arquivos de código e banner.png. O banner será enviado separadamente pelo professor. Não use recursos externos com licença restritiva.
-7. Mostre instruções breves dentro do próprio jogo, feedback claro, progresso e resultado final coerentes com a mecânica. Evite expor a resposta antes da interação.
-8. Garanta que nomes, perguntas e instruções estejam em português do Brasil, com linguagem apropriada à turma.
-9. A integração de pontuação com a plataforma é obrigatória: identifique no seu próprio script a variável numérica que realmente guarda o placar (não invente uma variável desconectada da lógica do jogo). Sempre que essa pontuação mudar, chame window.EduLabSDK.score(valorAtualDoPlacar); durante as etapas, envie window.EduLabSDK.progress({ current: etapaAtual, total: totalDeEtapas }); e, ao concluir, chame exatamente uma vez window.EduLabSDK.completed({ score: pontuacaoFinal, metadata: {} }). Envie a pontuação final somente depois de calcular o resultado real do jogo. A plataforma não consegue inferir placar lendo variáveis, texto da tela ou DOM: sem esses eventos, a pontuação não será registrada.
-10. O SDK normalmente será carregado pelo <script src="/edulab-sdk.js"></script> incluído no index.html. Proteja as chamadas com verificações de existência para o jogo continuar funcionando quando aberto fora da plataforma. Se window.EduLabSDK não existir e o jogo estiver embutido, use como fallback compatível window.parent.postMessage({ type: 'edulab.activity.event', event_type: 'progress', score: valorAtualDoPlacar }, '*') para atualizações e window.parent.postMessage({ type: 'edulab.activity.result', score: pontuacaoFinal }, '*') uma única vez ao concluir. Nunca invente pontos, não envie nomes ou dados pessoais e, após concluir, ignore qualquer ação de replay em contexto de sala.
-11. Informe falhas recuperáveis com window.EduLabSDK.error({ message }). A integração é opcional apenas para execução independente; em uma sala EduLab, os eventos de pontuação, progresso e conclusão são obrigatórios para o ranking registrar esses dados.
+6. **Imagens adicionais no jogo**: Você pode gerar quantas imagens PNG adicionais forem necessárias para o jogo (personagens, fundos, ícones, etc). Todas as imagens adicionais devem ser incluídas como arquivos PNG na raiz do pacote .edugame. No script.js, referencie essas imagens usando apenas o nome e extensão, sem caminhos de pastas: new Image().src = 'personagem.png' ou <img src="mascote.png">. A plataforma carregará automaticamente essas imagens da raiz do pacote. **Importante**: Se a IA gerar imagens com dimensões maiores que necessário, o sistema as recortará automaticamente ao melhor tamanho mantendo as proporções.
+7. Não inclua arquivos locais adicionais além dos quatro arquivos de código, banner.png e as imagens adicionais em PNG. Não use recursos externos com licença restritiva.
+8. Mostre instruções breves dentro do próprio jogo, feedback claro, progresso e resultado final coerentes com a mecânica. Evite expor a resposta antes da interação.
+9. Garanta que nomes, perguntas e instruções estejam em português do Brasil, com linguagem apropriada à turma.
+10. A integração de pontuação com a plataforma é obrigatória: identifique no seu próprio script a variável numérica que realmente guarda o placar (não invente uma variável desconectada da lógica do jogo). Sempre que essa pontuação mudar, chame window.EduLabSDK.score(valorAtualDoPlacar); durante as etapas, envie ${progressExample}; e, ao concluir, chame exatamente uma vez ${completedExample}. Envie a pontuação final somente depois de calcular o resultado real do jogo. A plataforma não consegue inferir placar lendo variáveis, texto da tela ou DOM: sem esses eventos, a pontuação não será registrada.
+11. O SDK normalmente será carregado pelo <script src="/edulab-sdk.js"></script> incluído no index.html. Proteja as chamadas com verificações de existência para o jogo continuar funcionando quando aberto fora da plataforma. Se window.EduLabSDK não existir e o jogo estiver embutido, use como fallback compatível ${postMessageEvent} para atualizações e ${postMessageResult} uma única vez ao concluir. Nunca invente pontos, não envie nomes ou dados pessoais e, após concluir, ignore qualquer ação de replay em contexto de sala.
+12. Informe falhas recuperáveis com ${errorExample}. A integração é opcional apenas para execução independente; em uma sala EduLab, os eventos de pontuação, progresso e conclusão são obrigatórios para o ranking registrar esses dados.
+13. **Versioning e Atualizações**: Se este jogo for uma versão melhorada ou alterada de um jogo anterior, **incremente a versão semântica no manifest.json**. Por exemplo, se era 1.0.0, mude para 1.0.1 (correção) ou 1.1.0 (nova feature). O professor poderá re-enviar o jogo com versão incrementada para atualizar a versão anterior no sistema. Quando o mesmo professor re-enviar um jogo com slug idêntico, o sistema substituirá apenas se a versão for maior. Se a versão for igual ou menor, a importação será rejeitada.
 
-Responda com exatamente estes quatro blocos de código e anexe também o arquivo banner.png. Se não puder anexar imagens, escreva depois dos blocos somente o prompt específico para gerar banner.png:
+## Instruções de Salvamento e Download
+Após receber os quatro blocos de código e a imagem, siga um destes procedimentos:
+
+### Opção 1: Se o seu assistente/chat suporta download direto
+Forneça os arquivos como downloads diretos (um botão por arquivo). O professor baixará:
+- manifest.json
+- index.html
+- script.js
+- styles.css
+- banner.png
+
+### Opção 2: Se não há suporte a download, use o método manual
+Instruções para o professor salvar cada arquivo manualmente:
+
+1. **manifest.json**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco JSON completo
+   - Salve como "manifest.json" (certifique-se que é texto simples, não .txt)
+
+2. **index.html**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco HTML completo
+   - Salve como "index.html" (certifique-se que é .html, não .txt)
+
+3. **script.js**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco JavaScript completo
+   - Salve como "script.js" (certifique-se que é .js, não .txt)
+
+4. **styles.css**:
+   - Abra o Bloco de Notas ou editor de texto
+   - Copie o bloco CSS completo
+   - Salve como "styles.css" (certifique-se que é .css, não .txt)
+
+5. **banner.png**:
+   - A imagem será anexada separadamente
+   - Salve ou baixe como "banner.png"
+
+6. **Imagens adicionais do jogo (se houver)**:
+   - Se o jogo incluir imagens adicionais (personagens, fundos, ícones, etc), salve cada uma como PNG na mesma pasta
+   - Use os nomes indicados pela IA (ex: personagem.png, fundo.png, mascote.png)
+   - O script.js fará referência a essas imagens usando apenas o nome da imagem
+
+Após salvar todos os arquivos na mesma pasta, o professor fará um arquivo ZIP contendo todos eles, renomeará para seu_slug.edugame e enviará para importar na plataforma EduLab.
+
+Responda com exatamente estes quatro blocos de código, anexe o arquivo banner.png e todas as imagens adicionais necessárias em PNG. Se não puder anexar imagens, escreva depois dos blocos somente prompts específicos para gerar cada imagem:
 ${fence}json manifest.json
 ...JSON completo...
 ${fence}
@@ -103,6 +233,7 @@ export function GameCreatorPage() {
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
   const [uploads, setUploads] = useState<Uploads>(initialUploads)
+  const [additionalImages, setAdditionalImages] = useState<File[]>([])
   const [isPublic, setIsPublic] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -138,6 +269,24 @@ export function GameCreatorPage() {
     setResult(null)
   }
 
+  function handleAdditionalImagesSelect(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.currentTarget.files ? Array.from(event.currentTarget.files) : []
+    const pngFiles = files.filter(file => file.type === 'image/png' || file.name.toLowerCase().endsWith('.png'))
+    
+    if (files.length !== pngFiles.length) {
+      setError(`Apenas arquivos PNG são aceitos. ${files.length - pngFiles.length} arquivo(s) ignorado(s).`)
+    } else {
+      setError(null)
+    }
+    
+    setAdditionalImages(pngFiles)
+    setResult(null)
+  }
+
+  function removeAdditionalImage(index: number) {
+    setAdditionalImages(prev => prev.filter((_, i) => i !== index))
+  }
+
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (Object.values(uploads).some((file) => !file)) {
@@ -153,19 +302,14 @@ export function GameCreatorPage() {
       const scriptFile = uploads.script!
       const htmlFile = uploads.html!
       const styleFile = uploads.style!
-      const bannerFile = uploads.banner!
+      let bannerFile = uploads.banner!
+      
       if (bannerFile.type !== 'image/png') {
         throw new Error('A capa precisa ser uma imagem PNG.')
       }
-      const bannerImage = await createImageBitmap(bannerFile)
-      const bannerAspectRatio = bannerImage.width / bannerImage.height
-      const bannerIsUsable = bannerImage.width >= 1280
-        && bannerImage.height >= 560
-        && Math.abs(bannerAspectRatio - 16 / 7) <= 0.02
-      bannerImage.close()
-      if (!bannerIsUsable) {
-        throw new Error('Use um banner PNG horizontal, com pelo menos 1280 x 560 pixels e proporção 16:7.')
-      }
+      
+      // Auto-crop banner to 16:7 ratio and ensure minimum size
+      bannerFile = await cropImageToRatio(bannerFile)
       const manifestText = await manifestFile.text()
       const manifest = JSON.parse(manifestText) as Record<string, unknown>
       const slug = typeof manifest.slug === 'string' ? manifest.slug.trim() : ''
@@ -203,6 +347,12 @@ export function GameCreatorPage() {
       zip.file('index.html', htmlFile)
       zip.file('styles.css', styleFile)
       zip.file('banner.png', bannerFile)
+      
+      // Add additional images to a subdirectory or root
+      for (const imageFile of additionalImages) {
+        zip.file(imageFile.name, imageFile)
+      }
+      
       const packageBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
       const packageFile = new File([packageBlob], `${slug}.edugame`, { type: 'application/zip' })
       setResult(await importGame(packageFile, isPublic))
@@ -214,8 +364,36 @@ export function GameCreatorPage() {
   }
 
   async function copyPrompt() {
-    await navigator.clipboard.writeText(prompt)
-    setCopied(true)
+    try {
+      // Tenta usar Clipboard API (moderna e segura)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(prompt)
+      } else {
+        // Fallback para document.execCommand (navegadores antigos)
+        const textarea = document.createElement('textarea')
+        textarea.value = prompt
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        textarea.style.left = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.select()
+        
+        if (!document.execCommand('copy')) {
+          throw new Error('execCommand falhou')
+        }
+        
+        document.body.removeChild(textarea)
+      }
+      
+      setCopied(true)
+      // Reset após 2 segundos
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Erro ao copiar prompt:', err)
+      setError('Não foi possível copiar o prompt. Tente manualmente.')
+      // Reset após 3 segundos
+      setTimeout(() => setCopied(false), 3000)
+    }
   }
 
   const answerField = (key: keyof typeof answers, label: string, hint: string, placeholder: string, rows = 3) => (
@@ -319,7 +497,7 @@ export function GameCreatorPage() {
         <section className="mt-10 grid gap-5 border-t border-line pt-8">
             <div>
               <h2 className="font-display text-xl font-semibold text-ink">5. Monte e publique o jogo</h2>
-              <p className="mt-1 text-sm text-muted">Envie os quatro arquivos do jogo e o banner PNG gerado para a capa da biblioteca.</p>
+              <p className="mt-1 text-sm text-muted">Envie os 5 arquivos do jogo gerados pela IA (JSON, HTML, CSS, JS e Banner) mais as imagens PNG adicionais usadas pelo jogo.</p>
             </div>
             <form onSubmit={handleUpload} className="grid gap-5">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -336,6 +514,33 @@ export function GameCreatorPage() {
                     {uploads[key] && <span className="break-all text-xs text-brand-dark">{uploads[key]?.name}</span>}
                   </label>
                 ))}
+              </div>
+
+              <div className="grid gap-2">
+                <label className="grid min-w-0 gap-2 rounded-md border border-line bg-white p-3 text-sm font-medium text-ink transition-colors hover:border-brand/50">
+                  <strong>Imagens PNG adicionais do jogo (opcional)</strong>
+                  <p className="mt-0 text-xs font-normal text-muted">Selecione todas as imagens (sprites, personagens, fundos, etc.) usadas pelo jogo. Elas serão processadas automaticamente para remover fundos brancos.</p>
+                  <input accept=".png,image/png" multiple className="block w-full text-xs text-muted file:mr-3 file:rounded file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-dark hover:file:bg-brand/15" onChange={handleAdditionalImagesSelect} type="file" />
+                  {additionalImages.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs font-semibold text-brand-dark">{additionalImages.length} arquivo(s) selecionado(s):</p>
+                      <ul className="space-y-1">
+                        {additionalImages.map((file, index) => (
+                          <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded-sm bg-brand-pale px-2 py-1 text-xs text-brand-dark">
+                            <span className="truncate">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeAdditionalImage(index)}
+                              className="ml-2 font-semibold text-brand hover:text-brand-dark"
+                            >
+                              ✕
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </label>
               </div>
 
               <fieldset className="m-0 grid gap-2 border-0 p-0">

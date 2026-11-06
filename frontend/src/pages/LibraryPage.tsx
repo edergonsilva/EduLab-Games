@@ -78,12 +78,10 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
     void loadData()
   }, [])
 
+  // Load initial dashboards on mount
   useEffect(() => {
     if (rooms.length === 0) return
-    let cancelled = false
-
-    async function refreshDashboards() {
-      if (document.visibilityState !== 'visible') return
+    async function loadInitial() {
       const entries = await Promise.all(
         rooms.map(async (room) => {
           try {
@@ -93,7 +91,6 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
           }
         }),
       )
-      if (cancelled) return
       setDashboards((current) => {
         const next = { ...current }
         for (const [code, dashboard] of entries) {
@@ -102,19 +99,117 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
         return next
       })
     }
+    void loadInitial()
+  }, [rooms])
 
-    let refreshTimeout: number | undefined
-    const scheduleRefresh = () => {
-      window.clearTimeout(refreshTimeout)
-      refreshTimeout = window.setTimeout(() => void refreshDashboards(), 150)
-    }
-    const unsubscribe = subscribeToRooms(rooms.map((room) => room.code), scheduleRefresh, refreshDashboards)
-    const interval = window.setInterval(() => void refreshDashboards(), 15000)
+  // Real-time updates via WebSocket (no polling!)
+  useEffect(() => {
+    if (rooms.length === 0) return
+
+    const unsubscribe = subscribeToRooms(
+      rooms.map((room) => room.code),
+      (eventName, payload: unknown) => {
+        // Update dashboards in real-time via Socket.IO
+        const typedPayload = payload as Record<string, unknown>
+        
+        if (eventName === 'activity.score') {
+          setDashboards((prev) => {
+            const code = typedPayload.room_code as string
+            if (!prev[code]?.participants) return prev
+            return {
+              ...prev,
+              [code]: {
+                ...prev[code],
+                participants: prev[code].participants.map((p) =>
+                  p.id === typedPayload.participant_id
+                    ? { ...p, last_score: typedPayload.score as number }
+                    : p
+                ),
+              },
+            }
+          })
+        } else if (eventName === 'activity.progress') {
+          setDashboards((prev) => {
+            const code = typedPayload.room_code as string
+            if (!prev[code]?.participants) return prev
+            const progress = typedPayload.progress as { current?: number; total?: number } | undefined
+            return {
+              ...prev,
+              [code]: {
+                ...prev[code],
+                participants: prev[code].participants.map((p) =>
+                  p.id === typedPayload.participant_id
+                    ? {
+                        ...p,
+                        progress_current: progress?.current ?? p.progress_current,
+                        progress_total: progress?.total ?? p.progress_total,
+                      }
+                    : p
+                ),
+              },
+            }
+          })
+        } else if (eventName === 'participant.updated') {
+          setDashboards((prev) => {
+            const code = typedPayload.room_code as string
+            if (!prev[code]?.participants) return prev
+            return {
+              ...prev,
+              [code]: {
+                ...prev[code],
+                participants: prev[code].participants.map((p) =>
+                  p.id === typedPayload.participant_id
+                    ? { 
+                        ...p, 
+                        connection_status: typedPayload.connection_status as string, 
+                        status: typedPayload.status as string 
+                      }
+                    : p
+                ),
+              },
+            }
+          })
+        } else if (eventName === 'activity.completed') {
+          setDashboards((prev) => {
+            const code = typedPayload.room_code as string
+            if (!prev[code]?.participants) return prev
+            return {
+              ...prev,
+              [code]: {
+                ...prev[code],
+                participants: prev[code].participants.map((p) =>
+                  p.id === typedPayload.participant_id
+                    ? { ...p, status: 'completed' }
+                    : p
+                ),
+              },
+            }
+          })
+        }
+      },
+      // On reconnect: refetch all dashboards
+      async () => {
+        const entries = await Promise.all(
+          rooms.map(async (room) => {
+            try {
+              return [room.code, await getRoomDashboard(room.code)] as const
+            } catch {
+              return [room.code, null] as const
+            }
+          }),
+        )
+        setDashboards((current) => {
+          const next = { ...current }
+          for (const [code, dashboard] of entries) {
+            if (dashboard) next[code] = dashboard
+          }
+          return next
+        })
+      }
+    )
+
     return () => {
-      cancelled = true
       unsubscribe()
-      window.clearTimeout(refreshTimeout)
-      window.clearInterval(interval)
     }
   }, [rooms])
 

@@ -16,9 +16,11 @@ from app.security import (
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=CORS_ORIGINS,
-    logger=False,
-    engineio_logger=False,
+    cors_allowed_origins="*",  # Accept all origins in development
+    allow_headers=["*"],
+    supports_credentials=True,
+    logger=True,  # Enable logging for debugging
+    engineio_logger=True,  # Enable engine.io logging to see WebSocket issues
 )
 _participant_sids: dict[int, set[str]] = {}
 
@@ -40,28 +42,92 @@ def room_channel(room_id: int) -> str:
 
 
 async def broadcast_room_event(room_id: int, event_name: str, payload: dict[str, Any]) -> None:
+    #print(f"🔊 Broadcasting {event_name} to room {room_id}: {payload}")
     await sio.emit(event_name, payload, room=room_channel(room_id))
+
 
 
 @sio.event
 async def connect(sid: str, environ: dict[str, Any], auth: dict[str, Any] | None = None):
+    #print(f"🔌 Socket.IO connect attempt - SID: {sid}, Auth: {auth is not None}")
+    
     cookies = _cookie_values(environ)
+    #print("========== SOCKET AUTH ==========")
+    #print("Teacher cookie present:", bool(cookies.get(SESSION_COOKIE_NAME)))
+    #print(
+    #    "Participant cookie present:",
+    #    bool(cookies.get(PARTICIPANT_SESSION_COOKIE_NAME))
+    #)
+    #print(f"📦 Cookies received: {list(cookies.keys())}")
+    
     db = SessionLocal()
     try:
-        teacher = get_teacher_from_token(cookies.get(SESSION_COOKIE_NAME), db)
-        if teacher:
-            await sio.save_session(sid, {"role": "teacher", "teacher_id": teacher.id})
-            return True
+        # Try to get token from cookies first
+        try:
+            teacher = get_teacher_from_token(cookies.get(SESSION_COOKIE_NAME), db)
+            #print(f"   Teacher cookie present: {bool(cookies.get(SESSION_COOKIE_NAME))}")
+            if teacher:
+                await sio.save_session(sid, {"role": "teacher", "teacher_id": teacher.id})
+                #print("Socket authenticated as TEACHER")
+                #print(f"✅ Teacher {teacher.id} connected: {sid}")
+                return True
+        except Exception as e:
+            #print(f"⚠️ Error checking teacher token: {e}")
 
-        participant = get_participant_from_session_token(
-            cookies.get(PARTICIPANT_SESSION_COOKIE_NAME), db
-        )
-        if participant:
-            await sio.save_session(
-                sid,
-                {"role": "participant", "participant_id": participant.id},
+        try:
+            participant = get_participant_from_session_token(
+                cookies.get(PARTICIPANT_SESSION_COOKIE_NAME), db
             )
-            return True
+            #print(f"   Participant cookie present: {bool(cookies.get(PARTICIPANT_SESSION_COOKIE_NAME))}")
+            if participant:
+                await sio.save_session(
+                    sid,
+                    {"role": "participant", "participant_id": participant.id},
+                )
+                #print(f"✅ Participant {participant.id} connected: {sid}")
+                return True
+        except Exception as e:
+            #print(f"⚠️ Error checking participant token: {e}")
+        
+        # Try to get token from auth parameter (for proxy scenarios)
+        if auth and isinstance(auth, dict):
+            token = auth.get("token")
+            #print(f"   Auth parameter present: {bool(auth and auth.get('token'))}")
+            if token:
+                try:
+                    # Try as teacher token first
+                    teacher = get_teacher_from_token(token, db)
+                    if teacher:
+                        await sio.save_session(sid, {"role": "teacher", "teacher_id": teacher.id})
+                        #print(f"✅ Teacher {teacher.id} connected via auth: {sid}")
+                        return True
+                except Exception as e:
+                    #print(f"⚠️ Error checking teacher token from auth: {e}")
+                
+                try:
+                    # Try as participant token
+                    participant = get_participant_from_session_token(token, db)
+                    if participant:
+                        await sio.save_session(
+                            sid,
+                            {"role": "participant", "participant_id": participant.id},
+                        )
+                        #print(f"✅ Participant {participant.id} connected via auth: {sid}")
+                        #print("Socket authenticated as PARTICIPANT")
+                        return True
+                except Exception as e:
+                    #print(f"⚠️ Error checking participant token from auth: {e}")
+        
+        # TEMPORARY: Allow unauthenticated connections for debugging
+        #print(f"⚠️ UNAUTHENTICATED CONNECTION ALLOWED (debug mode): {sid}")
+        await sio.save_session(sid, {"role": "debug", "debug_sid": sid})
+        #print("Socket authenticated as DEBUG")
+        #print(f"✅ Debug session saved for {sid}")
+        return False
+    except Exception as e:
+        #print(f"🔴 CRITICAL ERROR in connect handler: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         db.close()
@@ -100,6 +166,7 @@ async def join_room_channel(sid: str, payload: dict[str, Any] | None = None):
             return {"ok": False, "error": "Sessão sem permissão para esta sala."}
 
         await sio.enter_room(sid, room_channel(room.id))
+        #print(f"✅ Participant {session.get('participant_id')} joined room {room.id} ({room.code}) - SID: {sid}")
         await sio.save_session(sid, {**session, "room_id": room.id})
         return {"ok": True, "room_code": room.code, "status": room.status}
     finally:

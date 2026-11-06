@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from PIL import Image
 
 from app.config import PACKAGES_DIR, STATIC_IMPORTED_DIR, STATIC_IMPORTED_URL
 from app.database import get_db
@@ -81,6 +82,46 @@ def _normalise_slug(raw: str) -> str:
     # Collapse multiple consecutive hyphens
     slug = re.sub(r"-{2,}", "-", slug)
     return slug.strip("-")
+
+
+def _process_image(image_bytes: bytes) -> bytes:
+    """Process PNG image: auto-crop to remove excess whitespace while maintaining aspect ratio.
+    
+    Returns processed image bytes or original bytes if processing fails.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert to RGBA if needed to handle transparency
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        # Get bounding box of non-white content
+        # White pixels: R=255, G=255, B=255 (any alpha)
+        bbox = img.getbbox()
+        
+        if bbox:
+            # Crop to content with a small margin
+            left, top, right, bottom = bbox
+            # Add 2% margin to the crop (at least 1px)
+            margin_x = max(1, int((right - left) * 0.02))
+            margin_y = max(1, int((bottom - top) * 0.02))
+            
+            safe_left = max(0, left - margin_x)
+            safe_top = max(0, top - margin_y)
+            safe_right = min(img.width, right + margin_x)
+            safe_bottom = min(img.height, bottom + margin_y)
+            
+            cropped = img.crop((safe_left, safe_top, safe_right, safe_bottom))
+            
+            # Save cropped image back to bytes
+            output = io.BytesIO()
+            cropped.save(output, format='PNG')
+            return output.getvalue()
+    except Exception as e:
+        logger.warning(f"Failed to process image, using original: {e}")
+    
+    return image_bytes
 
 
 def _remove_game_artifacts(game: Game) -> None:
@@ -246,21 +287,46 @@ def import_game(
     slug = manifest["slug"]
     version = manifest["version"]
 
-    # -- Clean up previous installation (if any) -----------------------------
+    # -- Version validation helper -------------------------------------------
+    def compare_versions(v1: str, v2: str) -> int:
+        """Compare semantic versions. Returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2."""
+        try:
+            parts1 = tuple(map(int, v1.split('.')))
+            parts2 = tuple(map(int, v2.split('.')))
+            if parts1 < parts2:
+                return -1
+            elif parts1 > parts2:
+                return 1
+            else:
+                return 0
+        except (ValueError, AttributeError):
+            return 0  # Fallback on invalid format
+
+    # -- Handle existing game with same slug ---------------------------------
     existing_game = db.query(Game).filter(Game.slug == slug).first()
     replaced = existing_game is not None
 
     if replaced:
+        # Check if game belongs to another teacher
         if existing_game.teacher_id != teacher.id:
             raise HTTPException(
                 status_code=409,
-                detail="Este identificador já pertence a um jogo publicado por outro professor.",
+                detail=f"Identificador '{slug}' já existe em um jogo de outro professor. Escolha um identificador diferente (slug) no manifest.json.",
             )
+        
+        # Check version comparison for same teacher
+        version_cmp = compare_versions(version, existing_game.version)
+        if version_cmp <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Versão '{version}' não é maior que a versão existente '{existing_game.version}'. Para atualizar o jogo, incremente a versão no manifest.json (ex: {existing_game.version} → nova versão maior).",
+            )
+        
         logger.info(
-            "Game '%s' already exists (version %s). Removing previous artifacts "
-            "before importing new package.",
+            "Game '%s' will be updated: version %s → %s. Removing previous artifacts.",
             slug,
             existing_game.version,
+            version,
         )
         _remove_game_artifacts(existing_game)
         db.delete(existing_game)
@@ -290,7 +356,14 @@ def import_game(
                 member_path.mkdir(parents=True, exist_ok=True)
             else:
                 member_path.parent.mkdir(parents=True, exist_ok=True)
-                member_path.write_bytes(zf.read(member.filename))
+                file_bytes = zf.read(member.filename)
+                
+                # Process PNG images: auto-crop to remove white backgrounds
+                if member.filename.lower().endswith('.png'):
+                    logger.info("Processing PNG image: %s", member.filename)
+                    file_bytes = _process_image(file_bytes)
+                
+                member_path.write_bytes(file_bytes)
 
     logger.info("Extracted game to: %s", extract_dir)
 
