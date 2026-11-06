@@ -233,6 +233,7 @@ export function GameCreatorPage() {
   const [prompt, setPrompt] = useState('')
   const [copied, setCopied] = useState(false)
   const [uploads, setUploads] = useState<Uploads>(initialUploads)
+  const [additionalImages, setAdditionalImages] = useState<File[]>([])
   const [isPublic, setIsPublic] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -266,6 +267,24 @@ export function GameCreatorPage() {
     setUploads((current) => ({ ...current, [key]: file }))
     setError(null)
     setResult(null)
+  }
+
+  function handleAdditionalImagesSelect(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.currentTarget.files ? Array.from(event.currentTarget.files) : []
+    const pngFiles = files.filter(file => file.type === 'image/png' || file.name.toLowerCase().endsWith('.png'))
+    
+    if (files.length !== pngFiles.length) {
+      setError(`Apenas arquivos PNG são aceitos. ${files.length - pngFiles.length} arquivo(s) ignorado(s).`)
+    } else {
+      setError(null)
+    }
+    
+    setAdditionalImages(pngFiles)
+    setResult(null)
+  }
+
+  function removeAdditionalImage(index: number) {
+    setAdditionalImages(prev => prev.filter((_, i) => i !== index))
   }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
@@ -328,6 +347,12 @@ export function GameCreatorPage() {
       zip.file('index.html', htmlFile)
       zip.file('styles.css', styleFile)
       zip.file('banner.png', bannerFile)
+      
+      // Add additional images to a subdirectory or root
+      for (const imageFile of additionalImages) {
+        zip.file(imageFile.name, imageFile)
+      }
+      
       const packageBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
       const packageFile = new File([packageBlob], `${slug}.edugame`, { type: 'application/zip' })
       setResult(await importGame(packageFile, isPublic))
@@ -472,7 +497,7 @@ export function GameCreatorPage() {
         <section className="mt-10 grid gap-5 border-t border-line pt-8">
             <div>
               <h2 className="font-display text-xl font-semibold text-ink">5. Monte e publique o jogo</h2>
-              <p className="mt-1 text-sm text-muted">Envie os quatro arquivos do jogo e o banner PNG gerado para a capa da biblioteca.</p>
+              <p className="mt-1 text-sm text-muted">Envie os 5 arquivos do jogo gerados pela IA (JSON, HTML, CSS, JS e Banner) mais as imagens PNG adicionais usadas pelo jogo.</p>
             </div>
             <form onSubmit={handleUpload} className="grid gap-5">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -489,6 +514,33 @@ export function GameCreatorPage() {
                     {uploads[key] && <span className="break-all text-xs text-brand-dark">{uploads[key]?.name}</span>}
                   </label>
                 ))}
+              </div>
+
+              <div className="grid gap-2">
+                <label className="grid min-w-0 gap-2 rounded-md border border-line bg-white p-3 text-sm font-medium text-ink transition-colors hover:border-brand/50">
+                  <strong>Imagens PNG adicionais do jogo (opcional)</strong>
+                  <p className="mt-0 text-xs font-normal text-muted">Selecione todas as imagens (sprites, personagens, fundos, etc.) usadas pelo jogo. Elas serão processadas automaticamente para remover fundos brancos.</p>
+                  <input accept=".png,image/png" multiple className="block w-full text-xs text-muted file:mr-3 file:rounded file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-dark hover:file:bg-brand/15" onChange={handleAdditionalImagesSelect} type="file" />
+                  {additionalImages.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs font-semibold text-brand-dark">{additionalImages.length} arquivo(s) selecionado(s):</p>
+                      <ul className="space-y-1">
+                        {additionalImages.map((file, index) => (
+                          <li key={`${file.name}-${index}`} className="flex items-center justify-between rounded-sm bg-brand-pale px-2 py-1 text-xs text-brand-dark">
+                            <span className="truncate">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeAdditionalImage(index)}
+                              className="ml-2 font-semibold text-brand hover:text-brand-dark"
+                            >
+                              ✕
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </label>
               </div>
 
               <fieldset className="m-0 grid gap-2 border-0 p-0">
