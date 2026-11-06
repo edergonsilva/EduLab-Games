@@ -15,6 +15,7 @@ import {
   type RoomHistory,
 } from '../api/rooms'
 import { GameCatalog } from '../components/GameCatalog'
+import { GameImportPanel } from '../components/GameImportPanel'
 import { Badge, Button, Card, Field, formatBrazilDateTime, Input, Modal, PageContainer, PageHeader, SectionHeading, Select } from '../components/ui'
 import { userErrorMessage } from '../api/errors'
 import { subscribeToRooms } from '../api/realtime'
@@ -530,6 +531,11 @@ export function LibraryPage({ teacherId }: { teacherId: number }) {
             })}
           </div>
         </div>
+      </section>
+
+      <section className="mb-10">
+        <SectionHeading title="Importar jogos" description="Adicione novos jogos à sua biblioteca." />
+        <GameImportPanel onImportSuccess={loadData} />
       </section>
 
       <section>
