@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket.IO Test</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Socket.IO Connection Test</h1>
+    <div id="log"></div>
+    
+    <script>
+    function log(msg) {
+        console.log(msg)
+        const div = document.getElementById('log')
+        div.innerHTML += msg + '<br>'
+    }
+    
+    log('Starting test...')
+    log('Using direct connection to localhost:8000')
+    
+    const socket = io('http://localhost:8000', {
+        path: '/socket.io/',
+        withCredentials: true,
+        transports: ['polling'],  // HTTP polling only
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+    })
+    
+    socket.on('connect', () => {
+        log('✅ CONNECTED: ' + socket.id)
+    })
+    
+    socket.on('disconnect', () => {
+        log('❌ DISCONNECTED')
+    })
+    
+    socket.on('connect_error', (error) => {
+        log('⚠️ CONNECTION ERROR: ' + error)
+    })
+    
+    socket.on('error', (error) => {
+        log('❌ ERROR: ' + error)
+    })
+    
+    socket.on('message', (data) => {
+        log('📨 MESSAGE: ' + data)
+    })
+    </script>
+</body>
+</html>

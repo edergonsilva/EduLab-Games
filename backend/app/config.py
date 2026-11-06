@@ -21,12 +21,4 @@ STATIC_IMPORTED_URL = "/static/imported"
 # across process restarts and multiple workers.
 SESSION_SECRET_KEY = os.getenv("EDULAB_SESSION_SECRET") or secrets.token_urlsafe(32)
 SESSION_COOKIE_SECURE = os.getenv("EDULAB_COOKIE_SECURE", "false").lower() == "true"
-CORS_ORIGINS = [
-	origin.strip()
-	for origin in os.getenv(
-		"EDULAB_ALLOWED_ORIGINS",
-		"http://localhost:3000,http://localhost:5173,http://localhost:5174,"
-		"http://127.0.0.1:3000,http://127.0.0.1:5173,http://127.0.0.1:5174",
-	).split(",")
-	if origin.strip()
-]
+CORS_ORIGINS = ["*"]  # Accept all origins for development

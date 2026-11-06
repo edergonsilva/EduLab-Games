@@ -9,16 +9,14 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        credentials: true,
       },
       '/static': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        credentials: true,
       },
-      '/socket.io': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true,
-      },
+      // Socket.IO will connect directly to localhost:8000, not through this proxy
     },
   },
 })

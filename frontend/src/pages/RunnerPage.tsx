@@ -3,12 +3,27 @@ import { Link } from 'react-router-dom'
 import { createActivityEvent, getRunnerContext, type RunnerContext } from '../api/rooms'
 import { Badge, Card, Mascot } from '../components/ui'
 import { userErrorMessage } from '../api/errors'
-import { getRoomLobby } from '../api/rooms'
 import { subscribeToRooms } from '../api/realtime'
 
 export function RunnerPage() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
-  const sessionNonce = useMemo(() => crypto.randomUUID(), [])
+  //const sessionNonce = useMemo(() => window.crypto.randomUUID(), [])
+  const sessionNonce = useMemo(() => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID()
+    }
+
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint8Array(16)
+      crypto.getRandomValues(array)
+
+      return Array.from(array)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('')
+    }
+
+    return `${Date.now()}-${Math.random().toString(36).substring(2)}`
+  }, [])
   const [context, setContext] = useState<RunnerContext | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -18,15 +33,54 @@ export function RunnerPage() {
   const [roomFinished, setRoomFinished] = useState(false)
   const [communicationError, setCommunicationError] = useState<string | null>(null)
   const isFinished = participantStatus === 'completed'
-  const gameUrl = useMemo(() => {
-    if (!context || !context.game) return ''
-    const url = new URL(context.game.entry_url, window.location.origin)
-    return url.toString()
+  //const gameUrl = useMemo(() => {
+  //  if (!context || !context.game) return ''
+  //  const url = new URL(context.game.entry_url, window.location.origin)
+  //  return url.toString()
+  //}, [context])
+
+const gameUrl = useMemo(() => {
+    if (!context || !context.game || !context.game.entry_url) return ''
+    
+    try {
+      // Se a entry_url já for uma URL completa (ex: http://...), usamos ela diretamente, 
+      // mas trocando o host se necessário, ou mantendo se for externa.
+      // Se for relativa (ex: /games/missao/index.html), combinamos com o host e a porta atuais da página.
+      const entryUrl = context.game.entry_url
+      
+      if (entryUrl.startsWith('http://') || entryUrl.startsWith('https://')) {
+        const parsedUrl = new URL(entryUrl)
+        // Opcional: se o jogo estiver rodando no mesmo IP mas em outra porta/caminho, 
+        // você pode garantir que ele use o hostname atual:
+        // parsedUrl.hostname = window.location.hostname
+        return parsedUrl.toString()
+      }
+      
+      // Se for caminho relativo, monta dinamicamente usando a origem atual do navegador
+      const url = new URL(entryUrl, window.location.origin)
+      return url.toString()
+    } catch (e) {
+      console.error('Erro ao montar a URL do jogo:', e)
+      return context.game.entry_url
+    }
   }, [context])
-  const gameOrigin = useMemo(
-    () => context?.game ? new URL(context.game.entry_url, window.location.origin).origin : '',
-    [context],
-  )
+
+
+  //const gameOrigin = useMemo(
+  //  () => context?.game ? new URL(context.game.entry_url, window.location.origin).origin : '',
+  //  [context],
+  //)
+
+  const gameOrigin = useMemo(() => {
+    if (!context || !context.game) return ''
+    try {
+      // Se entry_url já for absoluta, usa ela. Se for relativa, usa a origem atual da página.
+      const url = new URL(context.game.entry_url, window.location.origin)
+      return url.origin
+    } catch (e) {
+      return '*' // Fallback coringa para testes caso a URL venha malformada
+    }
+  }, [context])
 
   useEffect(() => {
     let cancelled = false
@@ -68,37 +122,67 @@ export function RunnerPage() {
 
   useEffect(() => {
     if (!context) return
-    const roomCode = context.room.code
+  }, [context, gameUrl, gameOrigin])
 
-    async function reloadRoomState() {
-      try {
-        const state = await getRoomLobby(roomCode)
-        if (state.room.status === 'finished') setRoomFinished(true)
-      } catch (err) {
-        setCommunicationError(userErrorMessage(err, 'Não foi possível atualizar o estado da sala.'))
-      }
-    }
+  useEffect(() => {
+    if (!context) return
+    const roomCode = context.room.code
 
     const unsubscribe = subscribeToRooms(
       [roomCode],
       (eventName, payload) => {
-        if (eventName !== 'activity.finished') return
-        const event = payload as { room_code?: string }
-        if (event.room_code === roomCode) {
-          setRoomFinished(true)
-          iframeRef.current?.contentWindow?.postMessage({
-            namespace: 'edulab.sdk',
-            type: 'activity.finish',
-            session: { roomId: context.room.id, participantId: context.participant.id, nonce: sessionNonce },
-          }, gameOrigin)
+        // Handle room finished event - NO POLLING!
+        if (eventName === 'activity.finished') {
+          const event = payload as { room_code?: string }
+          if (event.room_code === roomCode) {
+            setRoomFinished(true)
+            iframeRef.current?.contentWindow?.postMessage({
+              namespace: 'edulab.sdk',
+              type: 'activity.finish',
+              session: { roomId: context.room.id, participantId: context.participant.id, nonce: sessionNonce },
+            }, '*')
+          }
+        }
+        // Handle room status update
+        else if (eventName === 'room.updated') {
+          const event = payload as { room_code?: string; status?: string }
+          if (event.room_code === roomCode && event.status === 'finished') {
+            setRoomFinished(true)
+          }
+        }
+        // Handle participant status update
+        else if (eventName === 'participant.updated') {
+          const event = payload as { participant_id?: number; status?: string; connection_status?: string }
+          if (event.participant_id === context.participant.id) {
+            if (event.status) {
+              setParticipantStatus(event.status)
+            }
+          }
         }
       },
-      () => void reloadRoomState(),
+      // On reconnect: reload context
+      async () => {
+        try {
+          const result = await getRunnerContext()
+          if (result.game) {
+            setContext(result)
+            setParticipantStatus(result.participant.status)
+            setParticipantScore(result.participant.last_score ?? null)
+            if (result.participant.progress_current !== null && result.participant.progress_total) {
+              setParticipantProgress({
+                current: result.participant.progress_current ?? 0,
+                total: result.participant.progress_total,
+              })
+            }
+          }
+        } catch (err) {
+          setCommunicationError(userErrorMessage(err, 'Não foi possível recarregar o estado da atividade.'))
+        }
+      },
     )
-    const interval = window.setInterval(() => void reloadRoomState(), 15000)
+
     return () => {
       unsubscribe()
-      window.clearInterval(interval)
     }
   }, [context, gameOrigin, sessionNonce])
 
@@ -107,7 +191,8 @@ export function RunnerPage() {
     const runnerContext = context
 
     function handleMessage(event: MessageEvent) {
-      if (event.source !== iframeRef.current?.contentWindow || event.origin !== gameOrigin) return
+      // Valida se a mensagem veio exatamente do nosso iframe (mais seguro que travar estritamente na origin)
+      if (event.source !== iframeRef.current?.contentWindow) return
       if (!event.data || typeof event.data !== 'object') return
 
       const payload = event.data as Record<string, unknown>
@@ -181,7 +266,7 @@ export function RunnerPage() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [context, gameOrigin, roomFinished, sessionNonce])
+  }, [context, roomFinished, sessionNonce])
 
   async function persistEvent(
     runnerContext: RunnerContext,

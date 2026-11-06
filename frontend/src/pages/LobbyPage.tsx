@@ -25,6 +25,7 @@ export function LobbyPage() {
         setError(null)
         const nextLobby = await getRoomLobby(roomCode)
         setLobby(nextLobby)
+        // Auto-redirect when activity becomes active
         if (nextLobby.room.status === 'active' && nextLobby.activity) {
           const participant = nextLobby.participants.find(
             (item) => item.id === nextLobby.current_participant_id,
@@ -47,12 +48,22 @@ export function LobbyPage() {
     }
 
     void loadLobby()
-    const unsubscribe = subscribeToRooms([roomCode], () => void loadLobby(), () => void loadLobby())
-    const interval = window.setInterval(() => void loadLobby(), 15000)
+
+    // Real-time updates via WebSocket - NO POLLING!
+    const unsubscribe = subscribeToRooms(
+      [roomCode],
+      (eventName) => {
+        // On room events, refetch lobby state
+        if (eventName === 'activity.started' || eventName === 'room.updated' || eventName === 'participant.joined') {
+          void loadLobby()
+        }
+      },
+      // On reconnect: refetch lobby
+      () => void loadLobby(),
+    )
 
     return () => {
       unsubscribe()
-      window.clearInterval(interval)
     }
   }, [navigate, roomCode])
 

@@ -142,7 +142,8 @@ O slug deve conter somente letras minúsculas sem acentos, números e hífens. M
 3. Faça o HTML carregar styles.css e script.js por caminhos relativos. Inclua <script src="/edulab-sdk.js"></script> antes de script.js. O jogo deve funcionar dentro de um iframe, adaptar-se a celular e desktop e não depender de servidor próprio, build ou arquivos extras.
 4. Implemente toda a lógica em JavaScript puro no script.js, sem módulos externos obrigatórios. Inicialize o jogo após o DOM estar pronto e trate reiniciar/terminar sem recarregar a página.
 5. Se usar ícones, use apenas ícones de uma fonte gratuita de ícones, por exemplo Bootstrap Icons como fonte web via CDN. Não desenhe, gere ou inclua SVGs. O jogo deve continuar utilizável se os ícones externos não carregarem.
-6. Não inclua arquivos locais adicionais além dos quatro arquivos de código e banner.png. O banner será enviado separadamente pelo professor. Não use recursos externos com licença restritiva.
+6. **Imagens adicionais no jogo**: Você pode gerar quantas imagens PNG adicionais forem necessárias para o jogo (personagens, fundos, ícones, etc). Todas as imagens adicionais devem ser incluídas como arquivos PNG na raiz do pacote .edugame. No script.js, referencie essas imagens usando apenas o nome e extensão, sem caminhos de pastas: `new Image().src = 'personagem.png'` ou `<img src="mascote.png">`. A plataforma carregará automaticamente essas imagens da raiz do pacote. **Importante**: Se a IA gerar imagens com dimensões maiores que necessário, o sistema as recortará automaticamente ao melhor tamanho mantendo as proporções.
+7. Não inclua arquivos locais adicionais além dos quatro arquivos de código, banner.png e as imagens adicionais em PNG. Não use recursos externos com licença restritiva.
 7. Mostre instruções breves dentro do próprio jogo, feedback claro, progresso e resultado final coerentes com a mecânica. Evite expor a resposta antes da interação.
 8. Garanta que nomes, perguntas e instruções estejam em português do Brasil, com linguagem apropriada à turma.
 9. A integração de pontuação com a plataforma é obrigatória: identifique no seu próprio script a variável numérica que realmente guarda o placar (não invente uma variável desconectada da lógica do jogo). Sempre que essa pontuação mudar, chame window.EduLabSDK.score(valorAtualDoPlacar); durante as etapas, envie window.EduLabSDK.progress({ current: etapaAtual, total: totalDeEtapas }); e, ao concluir, chame exatamente uma vez window.EduLabSDK.completed({ score: pontuacaoFinal, metadata: {} }). Envie a pontuação final somente depois de calcular o resultado real do jogo. A plataforma não consegue inferir placar lendo variáveis, texto da tela ou DOM: sem esses eventos, a pontuação não será registrada.
@@ -188,9 +189,14 @@ Instruções para o professor salvar cada arquivo manualmente:
    - A imagem será anexada separadamente
    - Salve ou baixe como "banner.png"
 
-Após salvar os cinco arquivos na mesma pasta, o professor fará um arquivo ZIP contendo todos os cinco, renomeará para seu_slug.edugame e enviará para importar na plataforma EduLab.
+6. **Imagens adicionais do jogo (se houver)**:
+   - Se o jogo incluir imagens adicionais (personagens, fundos, ícones, etc), salve cada uma como PNG na mesma pasta
+   - Use os nomes indicados pela IA (ex: personagem.png, fundo.png, mascote.png)
+   - O script.js fará referência a essas imagens usando apenas o nome da imagem
 
-Responda com exatamente estes quatro blocos de código e anexe também o arquivo banner.png. Se não puder anexar imagens, escreva depois dos blocos somente o prompt específico para gerar banner.png:
+Após salvar todos os arquivos na mesma pasta, o professor fará um arquivo ZIP contendo todos eles, renomeará para seu_slug.edugame e enviará para importar na plataforma EduLab.
+
+Responda com exatamente estes quatro blocos de código, anexe o arquivo banner.png e todas as imagens adicionais necessárias em PNG. Se não puder anexar imagens, escreva depois dos blocos somente prompts específicos para gerar cada imagem:
 ${fence}json manifest.json
 ...JSON completo...
 ${fence}

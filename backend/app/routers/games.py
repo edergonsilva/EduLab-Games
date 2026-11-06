@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from PIL import Image
 
 from app.config import PACKAGES_DIR, STATIC_IMPORTED_DIR, STATIC_IMPORTED_URL
 from app.database import get_db
@@ -81,6 +82,46 @@ def _normalise_slug(raw: str) -> str:
     # Collapse multiple consecutive hyphens
     slug = re.sub(r"-{2,}", "-", slug)
     return slug.strip("-")
+
+
+def _process_image(image_bytes: bytes) -> bytes:
+    """Process PNG image: auto-crop to remove excess whitespace while maintaining aspect ratio.
+    
+    Returns processed image bytes or original bytes if processing fails.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert to RGBA if needed to handle transparency
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        
+        # Get bounding box of non-white content
+        # White pixels: R=255, G=255, B=255 (any alpha)
+        bbox = img.getbbox()
+        
+        if bbox:
+            # Crop to content with a small margin
+            left, top, right, bottom = bbox
+            # Add 2% margin to the crop (at least 1px)
+            margin_x = max(1, int((right - left) * 0.02))
+            margin_y = max(1, int((bottom - top) * 0.02))
+            
+            safe_left = max(0, left - margin_x)
+            safe_top = max(0, top - margin_y)
+            safe_right = min(img.width, right + margin_x)
+            safe_bottom = min(img.height, bottom + margin_y)
+            
+            cropped = img.crop((safe_left, safe_top, safe_right, safe_bottom))
+            
+            # Save cropped image back to bytes
+            output = io.BytesIO()
+            cropped.save(output, format='PNG')
+            return output.getvalue()
+    except Exception as e:
+        logger.warning(f"Failed to process image, using original: {e}")
+    
+    return image_bytes
 
 
 def _remove_game_artifacts(game: Game) -> None:
@@ -315,7 +356,14 @@ def import_game(
                 member_path.mkdir(parents=True, exist_ok=True)
             else:
                 member_path.parent.mkdir(parents=True, exist_ok=True)
-                member_path.write_bytes(zf.read(member.filename))
+                file_bytes = zf.read(member.filename)
+                
+                # Process PNG images: auto-crop to remove white backgrounds
+                if member.filename.lower().endswith('.png'):
+                    logger.info("Processing PNG image: %s", member.filename)
+                    file_bytes = _process_image(file_bytes)
+                
+                member_path.write_bytes(file_bytes)
 
     logger.info("Extracted game to: %s", extract_dir)
 
