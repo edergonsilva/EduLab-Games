@@ -21,11 +21,7 @@ function getSocket(): Socket {
     //console.log('📍 Current URL:', window.location.href)
     //console.log('📍 Origin:', window.location.origin)
     
-    // Determine if we're in development or production
-    const currentHost = window.location.hostname;
-    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    //const backendUrl = isDev ? 'http://localhost:8000' : ''
-    const backendUrl = /*`http://${currentHost}:8000`*/ import.meta.env.VITE_BACKEND_URL
+    const backendUrl = import.meta.env.VITE_BACKEND_URL
     if (!backendUrl) {
       throw new Error('VITE_BACKEND_URL não configurada.')
     }
@@ -40,17 +36,15 @@ function getSocket(): Socket {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5,
-      pollInterval: 300,
     })
     
     // Intercept all requests for debugging
     if (socket.io && socket.io.engine) {
-      const originalRequest = socket.io.engine._request || null
-      socket.io.engine.on('message', (msg) => {
-        //console.log('📨 Message:', msg)
+      socket.io.engine.on('message', () => {
+        //console.log('📨 Message received')
       })
-      socket.io.engine.on('error', (err) => {
-        //console.error('⚠️ Engine error:', err)
+      socket.io.engine.on('error', () => {
+        //console.error('⚠️ Engine error occurred')
       })
     }
     
